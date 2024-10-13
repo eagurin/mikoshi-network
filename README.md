@@ -1,5 +1,7 @@
 # Mikoshi Network
 
+![mikoshi](https://mikoshi.company/cache/image/generations/cd5e8080-de9f-4523-8097-e47ec5193047.png)
+
 ## Описание
 
 Данный проект представляет собой комплексное приложение, развернутое с использованием Docker Compose. В его состав входят следующие ключевые сервисы:
