@@ -1,6 +1,6 @@
 networks:
-  r2r-network:
-    name: r2r-network
+  mikoshi-network:
+    name: mikoshi-network
     driver: bridge
     attachable: true
     ipam:
@@ -11,479 +11,31 @@ networks:
       - "com.docker.compose.recreate=always"
 
 volumes:
-  hatchet_certs:
-  hatchet_config:
-  hatchet_api_key:
-  postgres_data:
-  hatchet_rabbitmq_data:
-  hatchet_rabbitmq.conf:
-  ollama_data:
-  open_webui_data:
   letsencrypt:
+    name: letsencrypt
+  open-webui-data:
+    name: open_webui_data
+  pipelines-data:
+    name: pipelines_data
+  ollama-data:
+    name: ollama_data
+
 
 services:
-  postgres:
-    image: pgvector/pgvector:pg16
-    environment:
-      - POSTGRES_HOST=${POSTGRES_HOST:-postgres}
-      - POSTGRES_USER=${POSTGRES_USER:-postgres}
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-postgres}
-      - POSTGRES_DB=${POSTGRES_DBNAME:-postgres}
-      - POSTGRES_MAX_CONNECTIONS=${POSTGRES_MAX_CONNECTIONS:-1024}
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    networks:
-      - r2r-network
-    ports:
-      - "5432:5432"
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres}"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    restart: on-failure
-    command: >
-      postgres
-      -c max_connections=${POSTGRES_MAX_CONNECTIONS:-1024}
-    deploy:
-      resources:
-        limits:
-          cpus: '1.0'
-          memory: 2048M
-        reservations:
-          cpus: '0.5'
-          memory: 1024M
-
-  hatchet-rabbitmq:
-    image: "rabbitmq:3-management"
-    hostname: "hatchet-rabbitmq"
-    ports:
-      - "5673:5672"
-      - "15673:15672"
-    environment:
-      RABBITMQ_DEFAULT_USER: "user"
-      RABBITMQ_DEFAULT_PASS: "password"
-    volumes:
-      - "hatchet_rabbitmq_data:/var/lib/rabbitmq"
-      - "hatchet_rabbitmq.conf:/etc/rabbitmq/rabbitmq.conf"
-    healthcheck:
-      test: ["CMD", "rabbitmqctl", "status"]
-      interval: 10s
-      timeout: 10s
-      retries: 5
-    networks:
-      - r2r-network
-    deploy:
-      resources:
-        limits:
-          cpus: '0.5'
-          memory: 512M
-        reservations:
-          cpus: '0.25'
-          memory: 256M
-
-  hatchet-create-db:
-    image: postgres:latest
-    command: >
-      sh -c "
-        set -e
-        echo 'Waiting for PostgreSQL to be ready...'
-        while ! pg_isready -h ${POSTGRES_HOST:-postgres} -p 5432 -U ${POSTGRES_USER:-postgres}; do
-          sleep 1
-        done
-        echo 'PostgreSQL is ready, checking if database exists...'
-        if ! PGPASSWORD=${POSTGRES_PASSWORD:-postgres} psql -h ${POSTGRES_HOST:-postgres} -p 5432 -U ${POSTGRES_USER:-postgres} -lqt | grep -qw ${HATCHET_POSTGRES_DBNAME:-hatchet}; then
-          echo 'Database does not exist, creating it...'
-          PGPASSWORD=${POSTGRES_PASSWORD:-postgres} createdb -h ${POSTGRES_HOST:-postgres} -p 5432 -U ${POSTGRES_USER:-postgres} -w ${HATCHET_POSTGRES_DBNAME:-hatchet}
-        else
-          echo 'Database already exists, skipping creation.'
-        fi
-      "
-    environment:
-      POSTGRES_USER: "${POSTGRES_USER:-postgres}"
-      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:-postgres}"
-      POSTGRES_HOST: "${POSTGRES_HOST:-postgres}"
-      POSTGRES_PORT: "${POSTGRES_PORT:-5432}"
-      HATCHET_POSTGRES_DBNAME: "${HATCHET_POSTGRES_DBNAME:-hatchet}"
-    depends_on:
-      postgres:
-        condition: service_healthy
-    networks:
-      - r2r-network
-
-  hatchet-migration:
-    image: ghcr.io/hatchet-dev/hatchet/hatchet-migrate:v0.49.0-alpha.4
-    environment:
-      POSTGRES_USER: "${POSTGRES_USER:-postgres}"
-      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:-postgres}"
-      POSTGRES_HOST: "${POSTGRES_HOST:-postgres}"
-      POSTGRES_PORT: "${POSTGRES_PORT:-5432}"
-      HATCHET_POSTGRES_DBNAME: "${HATCHET_POSTGRES_DBNAME:-hatchet}"
-      DATABASE_URL: "postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@${POSTGRES_HOST:-postgres}:${POSTGRES_PORT:-5432}/${HATCHET_POSTGRES_DBNAME:-hatchet}?sslmode=disable"
-      DATABASE_POSTGRES_PORT: "${POSTGRES_PORT:-5432}"
-      DATABASE_POSTGRES_HOST: "${POSTGRES_HOST:-postgres}"
-      DATABASE_POSTGRES_USERNAME: "${POSTGRES_USER:-postgres}"
-      DATABASE_POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:-postgres}"
-      HATCHET_DATABASE_POSTGRES_DB_NAME: "${HATCHET_POSTGRES_DBNAME:-hatchet}"
-    depends_on:
-      hatchet-create-db:
-        condition: service_completed_successfully
-    networks:
-      - r2r-network
-
-  hatchet-setup-config:
-    image: ghcr.io/hatchet-dev/hatchet/hatchet-admin:v0.49.0-alpha.4
-    command: /hatchet/hatchet-admin quickstart --skip certs --generated-config-dir /hatchet/config --overwrite=false
-    environment:
-      POSTGRES_USER: "${POSTGRES_USER:-postgres}"
-      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:-postgres}"
-      POSTGRES_HOST: "${POSTGRES_HOST:-postgres}"
-      POSTGRES_PORT: "${POSTGRES_PORT:-5432}"
-      HATCHET_POSTGRES_DBNAME: "${HATCHET_POSTGRES_DBNAME:-hatchet}"
-      HATCHET_CLIENT_GRPC_MAX_RECV_MESSAGE_LENGTH: "${HATCHET_CLIENT_GRPC_MAX_RECV_MESSAGE_LENGTH:-13421772800}"
-      HATCHET_CLIENT_GRPC_MAX_SEND_MESSAGE_LENGTH: "${HATCHET_CLIENT_GRPC_MAX_SEND_MESSAGE_LENGTH:-13421772800}"
-      DATABASE_URL: "postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@${POSTGRES_HOST:-postgres}:${POSTGRES_PORT:-5432}/${HATCHET_POSTGRES_DBNAME:-hatchet}?sslmode=disable"
-      DATABASE_POSTGRES_PORT: "${POSTGRES_PORT:-5432}"
-      DATABASE_POSTGRES_HOST: "${POSTGRES_HOST:-postgres}"
-      DATABASE_POSTGRES_USERNAME: "${POSTGRES_USER:-postgres}"
-      DATABASE_POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:-postgres}"
-      HATCHET_DATABASE_POSTGRES_DB_NAME: "${HATCHET_POSTGRES_DBNAME:-hatchet}"
-      SERVER_TASKQUEUE_RABBITMQ_URL: amqp://user:password@hatchet-rabbitmq:5672/
-      SERVER_AUTH_COOKIE_DOMAIN: "http://host.docker.internal:7274"
-      SERVER_URL: "http://host.docker.internal:7274"
-      SERVER_AUTH_COOKIE_INSECURE: "t"
-      SERVER_GRPC_BIND_ADDRESS: "0.0.0.0"
-      SERVER_GRPC_INSECURE: "t"
-      SERVER_GRPC_BROADCAST_ADDRESS: "host.docker.internal:7077"
-      SERVER_GRPC_MAX_MSG_SIZE: 13421772800
-    volumes:
-      - hatchet_certs:/hatchet/certs
-      - hatchet_config:/hatchet/config
-    depends_on:
-      hatchet-migration:
-        condition: service_completed_successfully
-      hatchet-rabbitmq:
-        condition: service_healthy
-    networks:
-      - r2r-network
-
-  hatchet-engine:
-    image: ghcr.io/hatchet-dev/hatchet/hatchet-engine:v0.49.0-alpha.4
-    command: /hatchet/hatchet-engine --config /hatchet/config
-    restart: on-failure
-    depends_on:
-      hatchet-setup-config:
-        condition: service_completed_successfully
-    ports:
-      - "7077:7077"
-    environment:
-      HTTP_PROXY: ${HTTP_PROXY}
-      HTTPS_PROXY: ${HTTPS_PROXY}
-      NO_PROXY: ${NO_PROXY}
-      POSTGRES_USER: "${POSTGRES_USER:-postgres}"
-      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:-postgres}"
-      POSTGRES_HOST: "${POSTGRES_HOST:-postgres}"
-      POSTGRES_PORT: "${POSTGRES_PORT:-5432}"
-      HATCHET_POSTGRES_DBNAME: "${HATCHET_POSTGRES_DBNAME:-hatchet}"
-      DATABASE_URL: "postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@${POSTGRES_HOST:-postgres}:${POSTGRES_PORT:-5432}/${HATCHET_POSTGRES_DBNAME:-hatchet}?sslmode=disable"
-      SERVER_GRPC_BROADCAST_ADDRESS: "host.docker.internal:7077"
-      SERVER_GRPC_BIND_ADDRESS: "0.0.0.0"
-      SERVER_GRPC_PORT: 7077
-      SERVER_GRPC_INSECURE: "t"
-      SERVER_GRPC_MAX_MSG_SIZE: 13421772800
-    volumes:
-      - hatchet_certs:/hatchet/certs
-      - hatchet_config:/hatchet/config
-    networks:
-      r2r-network:
-        aliases:
-          - host.docker.internal
-    healthcheck:
-      test: ["CMD", "wget", "-q", "-O", "-", "http://localhost:8733/live"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    deploy:
-      resources:
-        limits:
-          cpus: '1'
-          memory: 6144M
-        reservations:
-          cpus: '0.5'
-          memory: 3072M
-
-  hatchet-dashboard:
-    image: ghcr.io/hatchet-dev/hatchet/hatchet-dashboard:v0.49.0-alpha.4
-    command: sh ./entrypoint.sh --config /hatchet/config
-    restart: on-failure
-    depends_on:
-      hatchet-setup-config:
-        condition: service_completed_successfully
-    environment:
-      NEXT_PUBLIC_API_URL: "https://hatchet.mikoshi.company"
-      POSTGRES_USER: "${POSTGRES_USER:-postgres}"
-      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:-postgres}"
-      POSTGRES_HOST: host.docker.internal
-      POSTGRES_PORT: "${POSTGRES_PORT:-5432}"
-      HATCHET_POSTGRES_DBNAME: "${HATCHET_POSTGRES_DBNAME:-hatchet}"
-      DATABASE_URL: "postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@${POSTGRES_HOST:-host.docker.internal}:${POSTGRES_PORT:-5432}/${HATCHET_POSTGRES_DBNAME:-hatchet}?sslmode=disable"
-    volumes:
-      - hatchet_certs:/hatchet/certs
-      - hatchet_config:/hatchet/config
-    networks:
-      - r2r-network
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.hatchet-dashboard.rule=Host(`hatchet.mikoshi.company`)"
-      - "traefik.http.routers.hatchet-dashboard.entrypoints=websecure"
-      - "traefik.http.routers.hatchet-dashboard.tls.certresolver=myresolver"
-      - "traefik.http.services.hatchet-dashboard.loadbalancer.server.port=80"
-    deploy:
-      resources:
-        limits:
-          cpus: '0.25'
-          memory: 512M
-        reservations:
-          cpus: '0.1'
-          memory: 256M
-
-  setup-token:
-    image: ghcr.io/hatchet-dev/hatchet/hatchet-admin:v0.49.0-alpha.4
-    command: >
-      sh -c "
-        set -e
-        echo 'Starting token creation process...'
-
-        # Attempt to create token and capture both stdout and stderr
-        TOKEN_OUTPUT=$$(/hatchet/hatchet-admin token create --config /hatchet/config --tenant-id 707d0855-80ab-4e1f-a156-f1c4546cbf52 2>&1)
-
-        # Extract the token (assuming it's the only part that looks like a JWT)
-        TOKEN=$$(echo \"$$TOKEN_OUTPUT\" | grep -Eo 'eyJ[A-Za-z0-9_-]*\.eyJ[A-Za-z0-9_-]*\.[A-Za-z0-9_-]*')
-
-        if [ -z \"$$TOKEN\" ]; then
-          echo 'Error: Failed to extract token. Full command output:' >&2
-          echo \"$$TOKEN_OUTPUT\" >&2
-          exit 1
-        fi
-
-        echo \"$$TOKEN\" > /tmp/hatchet_api_key
-        echo 'Token created and saved to /tmp/hatchet_api_key'
-
-        # Copy token to final destination
-        echo -n \"$$TOKEN\" > /hatchet_api_key/api_key.txt
-        echo 'Token copied to /hatchet_api_key/api_key.txt'
-
-        # Verify token was copied correctly
-        if [ \"$$(cat /tmp/hatchet_api_key)\" != \"$(cat /hatchet_api_key/api_key.txt)\" ]; then
-          echo 'Error: Token copy failed, files do not match' >&2
-          echo 'Content of /tmp/hatchet_api_key:'
-          cat /tmp/hatchet_api_key
-          echo 'Content of /hatchet_api_key/api_key.txt:'
-          cat /hatchet_api_key/api_key.txt
-          exit 1
-        fi
-
-        echo 'Hatchet API key has been saved successfully'
-        echo 'Token length:' $${#TOKEN}
-        echo 'Token (first 20 chars):' $${TOKEN:0:20}
-        echo 'Token structure:' $$(echo $$TOKEN | awk -F. '{print NF-1}') 'parts'
-        # Check each part of the token
-        for i in 1 2 3; do
-          PART=$$(echo $$TOKEN | cut -d. -f$$i)
-          echo 'Part' $$i 'length:' $${#PART}
-          echo 'Part' $$i 'base64 check:' $$(echo $$PART | base64 -d >/dev/null 2>&1 && echo 'Valid' || echo 'Invalid')
-        done
-        # Final validation attempt
-        if ! echo $$TOKEN | awk -F. '{print $$2}' | base64 -d 2>/dev/null | jq . >/dev/null 2>&1; then
-          echo 'Warning: Token payload is not valid JSON when base64 decoded' >&2
-        else
-          echo 'Token payload appears to be valid JSON'
-        fi
-      "
-    networks:
-      - r2r-network
-    environment:
-      POSTGRES_USER: "${POSTGRES_USER:-postgres}"
-      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:-postgres}"
-      POSTGRES_HOST: "${POSTGRES_HOST:-postgres}"
-      POSTGRES_PORT: "${POSTGRES_PORT:-5432}"
-      POSTGRES_DBNAME: "${HATCHET_POSTGRES_DBNAME:-hatchet}"
-      DATABASE_URL: "postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@${POSTGRES_HOST:-postgres}:${POSTGRES_PORT:-5432}/${POSTGRES_DBNAME:-postgres}?sslmode=disable"
-      DATABASE_POSTGRES_PORT: "${POSTGRES_PORT:-5432}"
-      DATABASE_POSTGRES_HOST: "${POSTGRES_HOST:-postgres}"
-      DATABASE_POSTGRES_USERNAME: "${POSTGRES_USER:-postgres}"
-      DATABASE_POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:-postgres}"
-      DATABASE_POSTGRES_DB_NAME: "${HATCHET_POSTGRES_DBNAME:-hatchet}"
-    volumes:
-      - hatchet_certs:/hatchet/certs
-      - hatchet_config:/hatchet/config
-      - hatchet_api_key:/hatchet_api_key
-    depends_on:
-      hatchet-setup-config:
-        condition: service_completed_successfully
-    deploy:
-      resources:
-        limits:
-          cpus: '0.25'
-          memory: 512M
-        reservations:
-          cpus: '0.1'
-          memory: 256M
-
-  unstructured:
-    image: ragtoriches/unst-prod
-    ports:
-      - "7275:7275"
-    networks:
-      - r2r-network
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:7275/health"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    deploy:
-      resources:
-        limits:
-          cpus: '0.5'
-          memory: 1024M
-        reservations:
-          cpus: '0.25'
-          memory: 512M
-
-  r2r:
-    image: ragtoriches/prod:latest
-    build:
-      context: .
-      args:
-        PORT: ${PORT:-7272}
-    ports:
-      - "${PORT:-7272}:${PORT:-7272}"
-    environment:
-      - HTTP_PROXY=${HTTP_PROXY}
-      - HTTPS_PROXY=${HTTPS_PROXY}
-      - NO_PROXY=${NO_PROXY}
-      - PYTHONUNBUFFERED=1
-      - PORT=${PORT:-7272}
-      - HOST=${HOST:-0.0.0.0}
-      - CONFIG_NAME=${CONFIG_NAME:-}
-      - CONFIG_PATH=${CONFIG_PATH:-./r2r.toml}
-      - POSTGRES_USER=${POSTGRES_USER:-postgres}
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-postgres}
-      - POSTGRES_HOST=${POSTGRES_HOST:-postgres}
-      - POSTGRES_PORT=${POSTGRES_PORT:-5432}
-      - POSTGRES_DBNAME=${POSTGRES_DBNAME:-postgres}
-      - R2R_PROJECT_NAME=${R2R_PROJECT_NAME:-r2r_default}
-      - POSTGRES_MAX_CONNECTIONS=${POSTGRES_MAX_CONNECTIONS:-1024}
-      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
-      - OPENAI_API_BASE=${OPENAI_API_BASE:-}
-      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
-      - AZURE_API_KEY=${AZURE_API_KEY:-}
-      - AZURE_API_BASE=${AZURE_API_BASE:-}
-      - AZURE_API_VERSION=${AZURE_API_VERSION:-}
-      - GOOGLE_APPLICATION_CREDENTIALS=${GOOGLE_APPLICATION_CREDENTIALS:-}
-      - VERTEX_PROJECT=${VERTEX_PROJECT:-}
-      - VERTEX_LOCATION=${VERTEX_LOCATION:-}
-      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID:-}
-      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY:-}
-      - AWS_REGION_NAME=${AWS_REGION_NAME:-}
-      - GROQ_API_KEY=${GROQ_API_KEY:-}
-      - COHERE_API_KEY=${COHERE_API_KEY:-}
-      - ANYSCALE_API_KEY=${ANYSCALE_API_KEY:-}
-      - OLLAMA_API_BASE=${OLLAMA_API_BASE:-http://ollama:11434}
-      - UNSTRUCTURED_API_KEY=${UNSTRUCTURED_API_KEY:-}
-      - UNSTRUCTURED_API_URL=${UNSTRUCTURED_API_URL:-https://api.unstructured.io/general/v0/general}
-      - UNSTRUCTURED_LOCAL_URL=${UNSTRUCTURED_LOCAL_URL:-http://unstructured:7275}
-      - UNSTRUCTURED_NUM_WORKERS=${UNSTRUCTURED_NUM_WORKERS:-10}
-      - HATCHET_CLIENT_TLS_STRATEGY=none
-      - HATCHET_CLIENT_GRPC_ADDRESS="hatchet-engine:7077"
-      - HATCHET_CLIENT_GRPC_MAX_RECV_MESSAGE_LENGTH=${HATCHET_CLIENT_GRPC_MAX_RECV_MESSAGE_LENGTH:-13421772800}
-      - HATCHET_CLIENT_GRPC_MAX_SEND_MESSAGE_LENGTH=${HATCHET_CLIENT_GRPC_MAX_SEND_MESSAGE_LENGTH:-13421772800}
-    command: >
-      sh -c '
-        if [ -z "$${HATCHET_CLIENT_TOKEN}" ]; then
-          export HATCHET_CLIENT_TOKEN=$$(cat /hatchet_api_key/api_key.txt)
-        fi
-        exec uvicorn core.main.app_entry:app --host $${HOST} --port $${PORT}
-      '
-    networks:
-      - r2r-network
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:${PORT:-7272}/v2/health"]
-      interval: 6s
-      timeout: 5s
-      retries: 5
-    restart: on-failure
-    volumes:
-      - ./r2r.toml:/app/r2r.toml:ro  # Mount the config file
-      - ${CONFIG_PATH:-/}:${CONFIG_PATH:-/app/config}
-      - hatchet_api_key:/hatchet_api_key:ro
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.r2r.rule=Host(`api.mikoshi.company`)"
-      - "traefik.http.routers.r2r.entrypoints=websecure"
-      - "traefik.http.routers.r2r.tls.certresolver=myresolver"
-      - "traefik.http.services.r2r.loadbalancer.server.port=${PORT:-7272}"
-      - "traefik.http.middlewares.r2r-headers.headers.customrequestheaders.Access-Control-Allow-Origin=*"
-      - "traefik.http.middlewares.r2r-headers.headers.customrequestheaders.Access-Control-Allow-Methods=GET,POST,OPTIONS"
-      - "traefik.http.middlewares.r2r-headers.headers.customrequestheaders.Access-Control-Allow-Headers=DNT,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Range,Authorization"
-      - "traefik.http.middlewares.r2r-headers.headers.customresponseheaders.Access-Control-Expose-Headers=Content-Length,Content-Range"
-      - "traefik.http.routers.r2r.middlewares=r2r-headers"
-    extra_hosts:
-      - host.docker.internal:host-gateway
-    depends_on:
-      setup-token:
-        condition: service_completed_successfully
-      unstructured:
-        condition: service_healthy
-    deploy:
-      resources:
-        limits:
-          cpus: '1.0'
-          memory: 4096M
-        reservations:
-          cpus: '0.5'
-          memory: 2048M
-
-  r2r-dashboard:
-    image: emrgntcmplxty/r2r-dashboard:latest
-    environment:
-      - NEXT_PUBLIC_API_URL=https://api.mikoshi.company
-    networks:
-      - r2r-network
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.r2r-dashboard.rule=Host(`r2r.mikoshi.company`)"
-      - "traefik.http.routers.r2r-dashboard.entrypoints=websecure"
-      - "traefik.http.routers.r2r-dashboard.tls.certresolver=myresolver"
-      - "traefik.http.services.r2r-dashboard.loadbalancer.server.port=3000"
-    deploy:
-      resources:
-        limits:
-          cpus: '0.25'
-          memory: 512M
-        reservations:
-          cpus: '0.1'
-          memory: 256M
-
   traefik:
     image: traefik:v2.9
     command:
       - "--providers.docker=true"
       - "--providers.docker.exposedbydefault=false"
-      - "--api.insecure=true"
       - "--entrypoints.web.address=:80"
       - "--entrypoints.websecure.address=:443"
-      - "--entrypoints.r2r.address=:${R2R_DASHBOARD_PORT:-8001}"
-      - "--entrypoints.hatchet.address=:${HATCHET_DASHBOARD_PORT:-8002}"
-      - "--entryPoints.metrics.address=:8082"
-      - "--metrics.prometheus=true"
-      - "--metrics.prometheus.entrypoint=metrics"
       - "--certificatesresolvers.myresolver.acme.email=goldmeat93@gmail.com"
       - "--certificatesresolvers.myresolver.acme.storage=/letsencrypt/acme.json"
       - "--certificatesresolvers.myresolver.acme.httpchallenge.entrypoint=web"
       - "--log.level=DEBUG"
       - "--accesslog=true"
       - "--accesslog.filepath=/var/log/traefik/access.log"
+      - "--api.dashboard=true"
     ports:
       - "80:80"
       - "443:443"
@@ -491,61 +43,7 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - letsencrypt:/letsencrypt
     networks:
-      - r2r-network
-    # labels:
-    #   - "traefik.http.middlewares.no-cache-headers.headers.customResponseHeaders.Cache-Control=no-cache, no-store, must-revalidate"
-    #   # Добавьте middleware для блокировки
-    #   - "traefik.http.middlewares.block-samolet-webbot.blocking.status=403"
-    #   - "traefik.http.middlewares.block-samolet-webbot.blocking.message=Access forbidden"
-    #   # Добавьте маршрут для блокировки
-    #   - "traefik.http.routers.block-samolet-webbot.rule=Host(`samolet-webbot.samolet.ru`)"
-    #   - "traefik.http.routers.block-samolet-webbot.entrypoints=websecure"
-    #   - "traefik.http.routers.block-samolet-webbot.middlewares=block-samolet-webbot"
-    #   - "traefik.http.routers.block-samolet-webbot.tls=true"
-    deploy:
-      resources:
-        limits:
-          cpus: '0.5'
-          memory: 512M
-        reservations:
-          cpus: '0.25'
-          memory: 256M
-
-  ollama:
-    container_name: ollama
-    pull_policy: always
-    tty: true
-    restart: unless-stopped
-    image: ollama/ollama:0.3.10
-    ports:
-      - "11434:11434"
-      - "9000:9000"
-    environment:
-      - OLLAMA_HOST=0.0.0.0
-      - OLLAMA_METRICS_PORT=9000
-    volumes:
-      - ollama_data:/root/.ollama
-    networks:
-      - r2r-network
-    healthcheck:
-      test: ["CMD", "ollama", "ps"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.ollama.rule=Host(`ollama.mikoshi.company`)"
-      - "traefik.http.services.ollama.loadbalancer.server.port=11434"
-      - "traefik.http.routers.ollama.entrypoints=websecure"
-      - "traefik.http.routers.ollama.tls.certresolver=myresolver"
-    deploy:
-      resources:
-        limits:
-          cpus: '4.0'
-          memory: 24G
-        reservations:
-          cpus: '2.0'
-          memory: 16G
+      - mikoshi-network
 
   open-webui:
     image: ghcr.io/open-webui/open-webui:${WEBUI_DOCKER_TAG-main}
@@ -555,23 +53,30 @@ services:
       - HTTP_PROXY=${HTTP_PROXY}
       - HTTPS_PROXY=${HTTPS_PROXY}
       - NO_PROXY=${NO_PROXY}
-    volumes:
-      - open_webui_data:/app/backend/data
-      - ./data:/app/data
+      - ENABLE_RAG_WEB_SEARCH-True
+      - RAG_WEB_SEARCH_ENGINE="searxng"
+      - RAG_WEB_SEARCH_RESULT_COUNT=3
+      - RAG_WEB_SEARCH_CONCURRENT_REQUESTS=10
+      - SEARXNG_QUERY_URL="http://searxng:8080/search?q=<query>"
+      # - .env
     ports:
       - "8080:8080"
-    networks:
-      - r2r-network
     depends_on:
-      ollama:
-        condition: service_healthy
-    restart: unless-stopped
+      - pipelines
+      - ollama
+      - tika
+    volumes:
+      - /mnt/storage/data:/app/backend/data
+      - open-webui-data:/app/backend/data
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.open-webui.rule=Host(`mikoshi.company`)"
-      - "traefik.http.routers.open-webui.entrypoints=websecure"
-      - "traefik.http.routers.open-webui.tls.certresolver=myresolver"
-      - "traefik.http.services.open-webui.loadbalancer.server.port=8080"
+      - "traefik.http.routers.openwebui.rule=Host(`${DOMAIN_NAME:-domain.com}`)"
+      - "traefik.http.routers.openwebui.entrypoints=websecure"
+      - "traefik.http.routers.openwebui.tls.certresolver=myresolver"
+      - "traefik.http.services.openwebui.loadbalancer.server.port=8080"
+    networks:
+      - mikoshi-network
+    restart: always
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
       interval: 30s
@@ -586,121 +91,138 @@ services:
           cpus: '3.0'
           memory: 20G
 
-  postgres-exporter:
-    image: wrouesnel/postgres_exporter
+  pipelines:
+    image: ghcr.io/open-webui/pipelines:main
+    container_name: pipelines
+    ports:
+      - "9099:9099"
+    volumes:
+      - /mnt/storage/pipelines:/app/pipelines
+      - pipelines-data:/app/pipelines
     environment:
-      DATA_SOURCE_NAME: "postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@${POSTGRES_HOST:-postgres}:${POSTGRES_PORT:-5432}/${HATCHET_POSTGRES_DBNAME:-hatchet}?sslmode=disable"
-    depends_on:
-      - postgres
-    ports:
-      - "9187:9187"
+      - HTTP_PROXY=${HTTP_PROXY}
+      - HTTPS_PROXY=${HTTPS_PROXY}
+      - NO_PROXY=${NO_PROXY}
+      - PIPELINES_API_KEY=0p3n-w3bu!
+      - PIPELINES_URLS="https://github.com/open-webui/pipelines/blob/main/examples/filters/detoxify_filter_pipeline.py"
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.pipelines.rule=Host(`pipelines.localhost`)"
+      - "traefik.http.routers.pipelines.entrypoints=websecure"
+      - "traefik.http.routers.pipelines.tls.certresolver=myresolver"
+      - "traefik.http.services.pipelines.loadbalancer.server.port=9099"
     networks:
-      - r2r-network
-    deploy:
-      resources:
-        limits:
-          cpus: '0.25'
-          memory: 256M
-        reservations:
-          cpus: '0.1'
-          memory: 128M
+      - mikoshi-network
+    restart: always
 
-  cadvisor:
-    image: gcr.io/cadvisor/cadvisor:latest
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ollama
     volumes:
-      - /:/rootfs:ro
-      - /var/run:/var/run:ro
-      - /sys:/sys:ro
-      - /var/lib/docker/:/var/lib/docker:ro
-    ports:
-      - "8088:8088"
+      - ollama-data:/root/.ollama
+    pull_policy: always
+    tty: true
     networks:
-      - r2r-network
-    deploy:
-      resources:
-        limits:
-          cpus: '0.25'
-          memory: 256M
-        reservations:
-          cpus: '0.1'
-          memory: 128M
+      - mikoshi-network
+    restart: always
 
-  node-exporter:
-    image: prom/node-exporter:latest
-    volumes:
-      - /proc:/host/proc:ro
-      - /sys:/host/sys:ro
-      - /:/rootfs:ro
-    command:
-      - '--path.procfs=/host/proc'
-      - '--path.sysfs=/host/sys'
-      - '--collector.filesystem.ignored-mount-points=^/(sys|proc|dev|host|etc)($$|/)'
-    pid: host
+  litellm:
+    image: litellm/litellm:latest
+    container_name: litellm
     ports:
-      - "9100:9100"
+      - "4000:4000"
+    volumes:
+      - /home/admin/mikoshi/config.yaml:/app/config.yaml
+    environment:
+      - LITELLM_MASTER_KEY=${LITELLM_MASTER_KEY:-}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      # Anthropic
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      # Azure
+      - AZURE_AD_TOKEN=${AZURE_AD_TOKEN:-}
+      - AZURE_AD_TOKEN_PROVIDER=${AZURE_AD_TOKEN_PROVIDER:-}
+      - AZURE_OPENAI_API_KEY=${AZURE_OPENAI_API_KEY:-}
+      - AZURE_API_BASE=${AZURE_API_BASE:-}
+      - AZURE_API_VERSION=${AZURE_API_VERSION:-}
+      # Google Vertex AI
+      - GOOGLE_APPLICATION_CREDENTIALS=${GOOGLE_APPLICATION_CREDENTIALS:-}
+      - VERTEX_PROJECT=${VERTEX_PROJECT:-}
+      - VERTEX_LOCATION=${VERTEX_LOCATION:-}
+      # AWS Bedrock
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID:-}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY:-}
+      - AWS_REGION_NAME=${AWS_REGION_NAME:-}
+      # Groq
+      - GROQ_API_KEY=${GROQ_API_KEY:-}
+      # Cohere
+      - COHERE_API_KEY=${COHERE_API_KEY:-}
+      # Anyscale
+      - ANYSCALE_API_KEY=${ANYSCALE_API_KEY:-}
+      # Ollama
+      - OLLAMA_API_BASE=http://ollama:11434
+      # - HTTP_PROXY=${HTTP_PROXY}
+      # - HTTPS_PROXY=${HTTPS_PROXY}
+      # - NO_PROXY=${NO_PROXY}
     networks:
-      - r2r-network
-    deploy:
-      resources:
-        limits:
-          cpus: '0.25'
-          memory: 256M
-        reservations:
-          cpus: '0.1'
-          memory: 128M
+      - mikoshi-network
+    restart: always
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.litellm.rule=Host(`litellm.${DOMAIN_NAME:-domain.com}`)"
+      - "traefik.http.routers.litellm.entrypoints=websecure"
+      - "traefik.http.routers.litellm.tls.certresolver=myresolver"
+      - "traefik.http.services.litellm.loadbalancer.server.port=4000"
+
+  watchtower:
+    image: containrrr/watchtower
+    container_name: watchtower
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    command: --interval 300 open-webui pipelines ollama litellm
+    environment:
+      - HTTP_PROXY=${HTTP_PROXY}
+      - HTTPS_PROXY=${HTTPS_PROXY}
+      - NO_PROXY=${NO_PROXY}
+    networks:
+      - mikoshi-network
+    restart: always
+
+  tika:
+    image: apache/tika:latest
+    container_name: tika
+    ports:
+      - "9998:9998"
+    networks:
+      - mikoshi-network
 
   prometheus:
     image: prom/prometheus:latest
+    container_name: prometheus
     volumes:
-      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
-    ports:
-      - "9090:9090"
-    networks:
-      - r2r-network
-    depends_on:
-      - postgres-exporter
-      - cadvisor
-      - node-exporter
-      - r2r
-      - traefik
-      - open-webui
-      - ollama
+      - /home/admin/mikoshi/prometheus.yml:/etc/prometheus/prometheus.yml
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.prometheus.rule=Host(`prometheus.mikoshi.company`)"
+      - "traefik.http.routers.prometheus.rule=Host(`prometheus.${DOMAIN_NAME:-domain.com}`)"
       - "traefik.http.routers.prometheus.entrypoints=websecure"
       - "traefik.http.routers.prometheus.tls.certresolver=myresolver"
       - "traefik.http.services.prometheus.loadbalancer.server.port=9090"
-    deploy:
-      resources:
-        limits:
-          cpus: '0.5'
-          memory: 1024M
-        reservations:
-          cpus: '0.25'
-          memory: 512M
+    networks:
+      - mikoshi-network
+    restart: always
 
   grafana:
     image: grafana/grafana:latest
-    depends_on:
-      - prometheus
-    ports:
-      - "3000:3000"
-    networks:
-      - r2r-network
+    container_name: grafana
     environment:
-      - GF_SECURITY_ADMIN_PASSWORD=yourpassword
+      - GF_SECURITY_ADMIN_PASSWORD=admin
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.grafana.rule=Host(`grafana.mikoshi.company`)"
+      - "traefik.http.routers.grafana.rule=Host(`grafana.${DOMAIN_NAME:-domain.com}`)"
       - "traefik.http.routers.grafana.entrypoints=websecure"
       - "traefik.http.routers.grafana.tls.certresolver=myresolver"
       - "traefik.http.services.grafana.loadbalancer.server.port=3000"
-    deploy:
-      resources:
-        limits:
-          cpus: '0.5'
-          memory: 512M
-        reservations:
-          cpus: '0.25'
-          memory: 256M
+    networks:
+      - mikoshi-network
+    depends_on:
+      - prometheus
+    restart: always

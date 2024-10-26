@@ -84,3 +84,8 @@ excluded_parsers = ["mp4"]
 
 [prompt]
 provider = "r2r"
+
+[proxy]
+http = "http://YumGkA:yFRSqo@45.154.59.33:8000"
+https = "http://YumGkA:yFRSqo@45.154.59.33:8000"
+no_proxy = "localhost,127.0.0.1,ollama,unstructured,pipelines,open-webui"

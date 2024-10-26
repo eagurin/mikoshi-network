@@ -1,0 +1,89 @@
+model_list:
+  - model_name: gpt-3.5-turbo
+    litellm_params:
+      model: azure/chatgpt-v-2
+      master_key: "${LITELLM_MASTER_KEY}"
+      openai_api_key: "${OPENAI_API_KEY}"
+      proxy:
+        http: "${HTTP_PROXY}"
+        https: "${HTTPS_PROXY}"
+        no_proxy: "${NO_PROXY}"
+      model_identifier: "gpt-3.5-turbo-id"
+      model_details:
+        description: "Azure ChatGPT v2 based model"
+
+  - model_name: gpt-3.5-turbo-large
+    litellm_params:
+      model: gpt-3.5-turbo-large
+      master_key: "${LITELLM_MASTER_KEY}"
+      openai_api_key: "${OPENAI_API_KEY}"
+      proxy:
+        http: "${HTTP_PROXY}"
+        https: "${HTTPS_PROXY}"
+        no_proxy: "${NO_PROXY}"
+      model_identifier: "gpt-3.5-turbo-large-id"
+      model_details:
+        description: "Large variant of GPT-3.5-turbo"
+
+  - model_name: gpt-4
+    litellm_params:
+      model: gpt-4
+      master_key: "${LITELLM_MASTER_KEY}"
+      openai_api_key: "${OPENAI_API_KEY}"
+      proxy:
+        http: "${HTTP_PROXY}"
+        https: "${HTTPS_PROXY}"
+        no_proxy: "${NO_PROXY}"
+      model_identifier: "gpt-4-id"
+      model_details:
+        description: "GPT-4 model"
+
+  - model_name: sagemaker-completion-model
+    litellm_params:
+      model: sagemaker/completion-model
+      aws_access_key_id: "${AWS_ACCESS_KEY_ID:-}"
+      aws_secret_access_key: "${AWS_SECRET_ACCESS_KEY:-}"
+      aws_region_name: "${AWS_REGION_NAME:-}"
+      proxy:
+        http: "${HTTP_PROXY}"
+        https: "${HTTPS_PROXY}"
+        no_proxy: "${NO_PROXY}"
+      model_identifier: "sagemaker-completion-id"
+      model_details:
+        description: "AWS SageMaker Completion Model"
+
+  - model_name: text-embedding-ada-002
+    litellm_params:
+      model: text-embedding-ada-002
+      openai_api_key: "${OPENAI_API_KEY}"
+      proxy:
+        http: "${HTTP_PROXY}"
+        https: "${HTTPS_PROXY}"
+        no_proxy: "${NO_PROXY}"
+      model_identifier: "text-embedding-ada-002-id"
+      model_details:
+        description: "OpenAI ADA 002 text embedding model"
+
+  - model_name: dall-e-2
+    litellm_params:
+      model: dall-e-2
+      openai_api_key: "${OPENAI_API_KEY}"
+      proxy:
+        http: "${HTTP_PROXY}"
+        https: "${HTTPS_PROXY}"
+        no_proxy: "${NO_PROXY}"
+      model_identifier: "dall-e-2-id"
+      model_details:
+        description: "DALL-E 2 model for image generation"
+
+  - model_name: openai-dall-e-3
+    litellm_params:
+      model: openai-dall-e-3
+      openai_api_key: "${OPENAI_API_KEY}"
+      proxy:
+        http: "${HTTP_PROXY}"
+        https: "${HTTPS_PROXY}"
+        no_proxy: "${NO_PROXY}"
+      model_identifier: "openai-dall-e-3-id"
+      model_details:
+        description: "OpenAI DALL-E 3 model for advanced image generation"
