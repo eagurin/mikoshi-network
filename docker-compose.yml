@@ -104,7 +104,7 @@ services:
       - HTTPS_PROXY=${HTTPS_PROXY}
       - NO_PROXY=${NO_PROXY}
       - PIPELINES_API_KEY=0p3n-w3bu!
-      - PIPELINES_URLS="https://github.com/open-webui/pipelines/blob/main/examples/filters/detoxify_filter_pipeline.py"
+      - PIPELINES_URLS="https://github.com/eagurin/mikoshi-network/blob/main/pipelines/r2r_pipeline.py"
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.pipelines.rule=Host(`pipelines.localhost`)"
