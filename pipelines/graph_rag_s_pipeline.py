@@ -1,5 +1,29 @@
+"""
+title: R2R Pipeline
+author: open-webui
+date: 2024-05-30
+version: 1.0
+license: MIT
+description: >
+  A pipeline that integrates R2R for search, RAG, and agent functionalities with dynamic
+  parameter configuration using prompts and LangChain.
+requirements:
+  - python>=3.8
+  - fastapi>=0.95.0
+  - aiohttp>=3.8.0
+  - pandas>=1.4.0
+  - networkx>=3.0
+  - requests>=2.28.0
+  - uvicorn>=0.20.0
+  - pydantic>=1.10.0,<2.0
+  - langchain>=0.0.100
+  - r2r>=1.0.0
+  - openai>=0.27.0
+  - faiss-cpu>=1.7.0
+  - loguru>=0.6.0
+"""
+
 import os
-import json
 import sys
 import asyncio
 import aiohttp
@@ -8,8 +32,8 @@ import networkx as nx
 import requests
 import logging
 import pickle
-from typing import List, Dict, Optional, Callable, Awaitable, Any
-from fastapi import FastAPI, HTTPException, Depends, UploadFile, File
+from typing import List, Dict, Optional, Any
+from fastapi import FastAPI, HTTPException, UploadFile, File
 from pydantic import BaseModel, Field, EmailStr
 from langchain.llms.base import LLM
 from langchain.embeddings import OpenAIEmbeddings
@@ -29,7 +53,6 @@ if sys.version_info < (3, 11):
         setattr(asyncio.sslproto, "_is_sslproto_available", lambda: False)
 
 # Pydantic Models for API Requests and Responses
-
 class RegisterRequest(BaseModel):
     email: EmailStr
     password: str
@@ -94,16 +117,15 @@ class UpdateDocumentRequest(BaseModel):
     metadata: Optional[dict] = {}
 
 # Custom Language Model integrating with R2R API
-
 class R2RLlm(LLM):
     def __init__(self, api_endpoint: str, api_key: Optional[str] = None):
         self.api_endpoint = api_endpoint
         self.api_key = api_key or os.getenv('R2R_API_KEY')
-
+    
     @property
     def _llm_type(self):
         return "R2R_RAG_Agent"
-
+    
     def _call(self, prompt: str, stop: Optional[List[str]] = None) -> str:
         headers = {"Content-Type": "application/json"}
         if self.api_key:
@@ -127,7 +149,6 @@ class R2RLlm(LLM):
             return "Извините, произошла ошибка при обработке вашего запроса."
 
 # Configuration Model
-
 class Pipe(BaseModel):
     AGENT_ID: str = Field(default="agent-app")
     AGENT_NAME: str = Field(default="Agent App")
@@ -180,9 +201,27 @@ class Pipe(BaseModel):
     })
     TASK_PROMPT_OVERRIDE: Optional[str] = Field(default=None)
 
-# Knowledge Graph Pipeline
+# -----------------------------
+# Pipeline класс
+# -----------------------------
+class Pipeline:
+    def __init__(self):
+        self.pipeline = KnowledgeGraphPipelineOpenWebUI()
 
-class KnowledgeGraphPipeline:
+    async def on_startup(self):
+        await self.pipeline.on_startup()
+
+    async def on_shutdown(self):
+        await self.pipeline.on_shutdown()
+        await r2r_client.close()
+
+    def pipe(self, user_message: str, model_id: str, messages: List[dict], body: dict) -> str:
+        return self.pipeline.pipe(user_message, model_id, messages, body)
+
+# -----------------------------
+# Knowledge Graph Pipeline для OpenWebUI
+# -----------------------------
+class KnowledgeGraphPipelineOpenWebUI:
     def __init__(self):
         self.graph: Optional[nx.DiGraph] = None
         self.vectorstore: Optional[FAISS] = None
@@ -225,14 +264,20 @@ class KnowledgeGraphPipeline:
                     description="Находит кратчайший путь между двумя узлами графа знаний. Введите два узла, разделённых ' и '."
                 )
             ]
-            self.agent = initialize_agent(tools, r2r_llm, AgentType.ZERO_SHOT_REACT_DESCRIPTION, verbose=True, memory=self.memory)
+            self.agent = initialize_agent(
+                tools,
+                r2r_llm,
+                AgentType.ZERO_SHOT_REACT_DESCRIPTION,
+                verbose=True,
+                memory=self.memory
+            )
             logger.info("Агент успешно инициализирован.")
             self.save_graph("knowledge_graph.pkl")
         else:
             logger.warning("Граф пуст. Невозможно инициализировать агента.")
 
     async def on_shutdown(self):
-        logger.info("Остановка приложения. Освобождение ресурсов.")
+        logger.info("Остановка Pipeline. Освобождение ресурсов.")
 
     def pipe(self, user_message: str, model_id: str, messages: List[dict], body: dict) -> str:
         if not self.graph or self.graph.number_of_nodes() == 0:
@@ -313,21 +358,18 @@ class KnowledgeGraphPipeline:
             return f"Узел не найден: {e}"
         except Exception as e:
             logger.error(f"Ошибка при поиске пути: {e}")
-            return "Произошла ошибка при поиске пути."
+            return "Извините, произошла ошибка при поиске пути."
 
+# -----------------------------
 # Event Model for Sending Requests to Agent
-
+# -----------------------------
 class EventModel(BaseModel):
     type: str
     data: dict
 
-# FastAPI Application Setup
-
-app = FastAPI()
-pipeline = KnowledgeGraphPipeline()
-
+# -----------------------------
 # R2R Client Wrapper for Interacting with External API
-
+# -----------------------------
 class R2RClientWrapper:
     def __init__(self, base_url: str = "http://localhost:7272"):
         self.base_url = base_url
@@ -427,8 +469,15 @@ class R2RClientWrapper:
 # Initialize R2R Client
 r2r_client = R2RClientWrapper()
 
-# API Endpoints
+# -----------------------------
+# Настройка FastAPI приложения
+# -----------------------------
+app = FastAPI()
+pipeline = Pipeline()
 
+# -----------------------------
+# API Эндпоинты
+# -----------------------------
 @app.post("/register", response_model=TokenResponse)
 async def register(request: RegisterRequest):
     return await r2r_client.register(request.email, request.password)
@@ -492,8 +541,9 @@ async def ask_question(question: str):
     response = pipeline.pipe(question, model_id='', messages=[], body={})
     return {"response": response}
 
-# Startup and Shutdown Events
-
+# -----------------------------
+# События запуска и остановки
+# -----------------------------
 @app.on_event("startup")
 async def startup_event():
     await pipeline.on_startup()
@@ -501,10 +551,10 @@ async def startup_event():
 @app.on_event("shutdown")
 async def shutdown_event():
     await pipeline.on_shutdown()
-    await r2r_client.close()
 
-# Entry Point
-
+# -----------------------------
+# Точка входа
+# -----------------------------
 if __name__ == "__main__":
     # Initialize the pipeline and run the server
     asyncio.run(pipeline.on_startup())

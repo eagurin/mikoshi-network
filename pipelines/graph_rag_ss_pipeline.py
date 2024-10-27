@@ -1,11 +1,26 @@
 """
-title: Knowledge Graph Pipeline for OpenWebUI
+title: R2R Pipeline
 author: open-webui
 date: 2024-05-30
 version: 1.0
 license: MIT
-description: A knowledge graph pipeline integrated with RAG, retrieval-based QA using LangChain, and search functionalities. This pipeline supports data ingestion, processing, and dynamic retrieval with interactive agents and FastAPI.
-requirements: pandas>=1.3.0, networkx>=2.6.3, fastapi>=0.68.0, pydantic>=1.8.0, uvicorn>=0.14.0, langchain>=0.0.100, faiss-cpu, requests, aiohttp, loguru, pickle, R2R>=1.0.0
+description: >
+  A pipeline that integrates R2R for search, RAG, and agent functionalities with dynamic
+  parameter configuration using prompts and LangChain.
+requirements:
+  - python==3.8.10
+  - fastapi==0.95.0
+  - aiohttp==3.8.1
+  - pandas==1.4.2
+  - networkx==3.0
+  - requests==2.28.1
+  - uvicorn==0.20.0
+  - pydantic==1.10.12
+  - langchain==0.0.100
+  - r2r==1.0.0
+  - openai==0.27.0
+  - faiss-cpu==1.7.3
+  - loguru==0.6.0
 """
 
 import os
@@ -146,7 +161,7 @@ class R2RLlm(LLM):
 # Модель конфигурации (Pipe)
 # -----------------------------
 
-class Pipe(BaseModel):
+class Pipeline(BaseModel):
     AGENT_ID: str = Field(default="agent-app")
     AGENT_NAME: str = Field(default="Agent App")
     AGENT_API_URL: str = Field(default="https://api.mikoshi.company/v2/agent")
