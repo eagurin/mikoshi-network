@@ -130,7 +130,7 @@ ENV/
 env.bak/
 venv.bak/
 
-pipelines/
+# pipelines/
 R2R/
 rag/
 searxng/
