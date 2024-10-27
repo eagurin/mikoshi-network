@@ -1,0 +1,339 @@
+version: '3.8'
+
+networks:
+  mikoshi-network:
+    driver: overlay
+    attachable: true
+    # ipam:
+    #   driver: default
+    #   config:
+    #     - subnet: 172.28.0.0/16
+    labels:
+      - "com.docker.stack.namespace=mikoshi-stack"
+
+volumes:
+  letsencrypt:
+    external: true
+  open-webui-data:
+    external: false
+  pipelines-data:
+    external: true
+  ollama-data:
+    external: true
+
+services:
+  traefik:
+    image: traefik:latest
+    command:
+      - "--providers.docker=true"
+      - "--providers.docker.swarmMode=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.websecure.address=:443"
+      - "--entrypoints.websecure.http.tls.minVersion=VersionTLS12"
+      - "--certificatesresolvers.myresolver.acme.email=goldmeat93@gmail.com"
+      - "--certificatesresolvers.myresolver.acme.storage=/letsencrypt/acme.json"
+      - "--certificatesresolvers.myresolver.acme.httpchallenge.entrypoint=web"
+      - "--certificatesresolvers.myresolver.acme.caServer=https://acme-v02.api.letsencrypt.org/directory"
+      - "--log.level=DEBUG"
+      - "--accesslog=true"
+      - "--accesslog.filepath=/var/log/traefik/access.log"
+      - "--api.dashboard=true"
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - letsencrypt:/letsencrypt
+    networks:
+      - mikoshi-network
+    deploy:
+      placement:
+        constraints:
+          - node.role == manager
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+
+  open-webui:
+    image: ghcr.io/open-webui/open-webui:${WEBUI_DOCKER_TAG-main}
+    build: .
+    networks:
+      mikoshi-network:
+        aliases:
+          - open-webui
+    environment:
+      - OLLAMA_BASE_URL=http://ollama:11434
+      - PIPELINES_BASE_URL=http://pipelines:9099
+      - HTTP_PROXY=${HTTP_PROXY}
+      - HTTPS_PROXY=${HTTPS_PROXY}
+      - NO_PROXY=${NO_PROXY}
+      - ENABLE_RAG_WEB_SEARCH=True
+      - RAG_WEB_SEARCH_ENGINE=searxng
+      - RAG_WEB_SEARCH_RESULT_COUNT=10
+      - RAG_WEB_SEARCH_CONCURRENT_REQUESTS=30
+      - SEARXNG_QUERY_URL="http://searxng:8091/search?q=<query>"
+      # - LOCAL_FILES_ONLY=false
+    deploy:
+      replicas: 3
+      resources:
+        limits:
+          cpus: '4.0'
+          memory: 24G
+        reservations:
+          cpus: '3.0'
+          memory: 20G
+      restart_policy:
+        condition: on-failure
+    ports:
+      - target: 8080
+        published: 8080
+        mode: host
+    depends_on:
+      - ollama
+      - pipelines
+      - tika
+    volumes:
+      - open-webui-data:/app/backend/data
+      - ~/mikoshi/config:/app/config
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.openwebui.rule=Host(`${DOMAIN_NAME:-}`)"
+      - "traefik.http.routers.openwebui.entrypoints=websecure"
+      - "traefik.http.routers.openwebui.tls.certresolver=myresolver"
+      - "traefik.http.services.openwebui.loadbalancer.server.port=8080"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  pipelines:
+    image: ghcr.io/open-webui/pipelines:main
+    build: .
+    networks:
+      mikoshi-network:
+        aliases:
+          - pipelines
+    environment:
+      - PIPELINES_DIR=/app/pipelines
+      # - HTTP_PROXY=${HTTP_PROXY}
+      # - HTTPS_PROXY=${HTTPS_PROXY}
+      # - NO_PROXY=${NO_PROXY}
+    deploy:
+      replicas: 1
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 8G
+        reservations:
+          cpus: '1.0'
+          memory: 4G
+      restart_policy:
+        condition: on-failure
+    ports:
+      - "9099:9099"
+    volumes:
+      - pipelines-data:/app/pipelines
+      - ~/mikoshi/data:/app/data
+      - ~/mikoshi/config:/app/config
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.pipelines.rule=Host(`pipelines.${DOMAIN_NAME:-}`)"
+      - "traefik.http.routers.pipelines.entrypoints=websecure"
+      - "traefik.http.routers.pipelines.tls.certresolver=myresolver"
+      - "traefik.http.services.pipelines.loadbalancer.server.port=9099"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9099/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  searxng:
+    image: searxng/searxng:latest
+    networks:
+      mikoshi-network:
+        aliases:
+          - searxng
+    ports:
+      - "8091:8091"
+    volumes:
+      - ./searxng:/etc/searxng
+    deploy:
+      replicas: 1
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
+        reservations:
+          cpus: '0.5'
+          memory: 256M
+      restart_policy:
+        condition: on-failure
+    restart: always
+
+  ollama:
+    image: ollama/ollama:latest
+    networks:
+      mikoshi-network:
+        aliases:
+          - ollama
+    volumes:
+      - ollama-data:/root/.ollama
+    deploy:
+      replicas: 1
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 8G
+        reservations:
+          cpus: '1.0'
+          memory: 4G
+      restart_policy:
+        condition: on-failure
+    # pull_policy: always
+    tty: true
+    restart: always
+
+  litellm:
+    image: litellm/litellm:latest
+    networks:
+      mikoshi-network:
+        aliases:
+          - litellm
+    environment:
+      - LITELLM_MASTER_KEY=${LITELLM_MASTER_KEY:-}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - AZURE_AD_TOKEN=${AZURE_AD_TOKEN:-}
+      - AZURE_AD_TOKEN_PROVIDER=${AZURE_AD_TOKEN_PROVIDER:-}
+      - AZURE_OPENAI_API_KEY=${AZURE_OPENAI_API_KEY:-}
+      - AZURE_API_BASE=${AZURE_API_BASE:-}
+      - AZURE_API_VERSION=${AZURE_API_VERSION:-}
+      - GOOGLE_APPLICATION_CREDENTIALS=${GOOGLE_APPLICATION_CREDENTIALS:-}
+      - VERTEX_PROJECT=${VERTEX_PROJECT:-}
+      - VERTEX_LOCATION=${VERTEX_LOCATION:-}
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID:-}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY:-}
+      - AWS_REGION_NAME=${AWS_REGION_NAME:-}
+      - GROQ_API_KEY=${GROQ_API_KEY:-}
+      - COHERE_API_KEY=${COHERE_API_KEY:-}
+      - ANYSCALE_API_KEY=${ANYSCALE_API_KEY:-}
+      - OLLAMA_API_BASE=http://ollama:11434
+      # - HTTP_PROXY=${HTTP_PROXY}
+      # - HTTPS_PROXY=${HTTPS_PROXY}
+      # - NO_PROXY=${NO_PROXY}
+    ports:
+      - "4000:4000"
+    volumes:
+      - /home/admin/mikoshi/config.yaml:/app/config.yaml
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.litellm.rule=Host(`litellm.${DOMAIN_NAME:-}`)"
+      - "traefik.http.routers.litellm.entrypoints=websecure"
+      - "traefik.http.routers.litellm.tls.certresolver=myresolver"
+      - "traefik.http.services.litellm.loadbalancer.server.port=4000"
+    deploy:
+      replicas: 1
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 8G
+        reservations:
+          cpus: '1.0'
+          memory: 4G
+      restart_policy:
+        condition: on-failure
+    restart: always
+
+  watchtower:
+    image: containrrr/watchtower
+    networks:
+      mikoshi-network:
+        aliases:
+          - watchtower
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    command: --interval 300 open-webui pipelines ollama litellm
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+    restart: always
+
+  tika:
+    image: apache/tika:latest
+    networks:
+      mikoshi-network:
+        aliases:
+          - tika
+    ports:
+      - "9998:9998"
+    deploy:
+      replicas: 1
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
+        reservations:
+          cpus: '0.5'
+          memory: 256M
+      restart_policy:
+        condition: on-failure
+    restart: always
+
+  prometheus:
+    image: prom/prometheus:latest
+    networks:
+      mikoshi-network:
+        aliases:
+          - prometheus
+    volumes:
+      - /home/admin/mikoshi/prometheus.yml:/etc/prometheus/prometheus.yml
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.prometheus.rule=Host(`prometheus.${DOMAIN_NAME:-}`)"
+      - "traefik.http.routers.prometheus.entrypoints=websecure"
+      - "traefik.http.routers.prometheus.tls.certresolver=myresolver"
+      - "traefik.http.services.prometheus.loadbalancer.server.port=9090"
+    deploy:
+      replicas: 1
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 2G
+        reservations:
+          cpus: '0.5'
+          memory: 1G
+      restart_policy:
+        condition: on-failure
+    restart: always
+
+  grafana:
+    image: grafana/grafana:latest
+    networks:
+      mikoshi-network:
+        aliases:
+          - grafana
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.grafana.rule=Host(`grafana.${DOMAIN_NAME:-}`)"
+      - "traefik.http.routers.grafana.entrypoints=websecure"
+      - "traefik.http.routers.grafana.tls.certresolver=myresolver"
+      - "traefik.http.services.grafana.loadbalancer.server.port=3000"
+    deploy:
+      replicas: 1
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 2G
+        reservations:
+          cpus: '0.5'
+          memory: 1G
+      restart_policy:
+        condition: on-failure
+    depends_on:
+      - prometheus
+    restart: always
