@@ -133,11 +133,11 @@ venv.bak/
 # pipelines/
 R2R/
 rag/
-searxng/
+# searxng/
 open-webui
-data/
+# data/
 security/
-
+design/
 # Spyder project settings
 .spyderproject
 .spyproject

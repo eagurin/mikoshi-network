@@ -1,0 +1,159 @@
+GraphRAG using LangChain
+codes explained with example, Generative AI
+
+Mehul Gupta
+
+Photo by Nastya Dulhiier on Unsplash
+Graph RAG is an advanced version of standard RAG that uses Knowledge Bases instead of vector similarity and vector DBs for retrieval from external documents, making the retrieval more comprehensive and wholesome.
+I’ve already covered GraphRAG in detail in the below posts:
+
+What is GraphRAG?
+
+How GraphRAG works?
+
+Graph RAG Crash course is live now:
+
+GraphRAG Crash Course
+
+RAG is amongst the most important concepts in Generative AI that help you to talk to your external files like CSV…
+
+
+datasciencepocket.gumroad.com
+
+In this post, I will run through a basic example of how to set GraphRAG using LangChain and use it to improve your RAG systems (using any LLM model or API)
+
+My debut book: LangChain in your Pocket is out now !!
+
+LangChain in your Pocket: Beginner's Guide to Building Generative AI Applications using LLMs
+
+Amazon.com: LangChain in your Pocket: Beginner's Guide to Building Generative AI Applications using LLMs eBook : Gupta…
+
+
+We will be discussing two approaches
+
+1. LLMGraphTransformer
+
+You 1st need to pip install a few essential libraries
+pip install --upgrade --quiet  json-repair networkx langchain-core langchain-google-vertexai langchain-experimental langchain-community
+
+#versions used
+langchain==0.2.8
+langchain-community==0.2.7
+langchain-core==0.2.19
+langchain-experimental==0.0.62
+langchain-google-vertexai==1.0.3
+Note: You can skip Google VertexAI and use any other LLM as well
+
+2. Import required functions. Initialize your LLM object & reference text. Use any SOTA LLM for best results as Knowledge Graph creation is a complicated task.
+
+import os
+from langchain_experimental.graph_transformers import LLMGraphTransformer
+from langchain_google_vertexai import VertexAI 
+import networkx as nx
+from langchain.chains import GraphQAChain
+from langchain_core.documents import Document
+from langchain_community.graphs.networkx_graph import NetworkxEntityGraph
+
+llm = VertexAI(max_output_tokens=4000,model_name='text-bison-32k')
+
+text = """
+Marie Curie, born in 1867, was a Polish and naturalised-French physicist and chemist who conducted pioneering research on radioactivity.
+She was the first woman to win a Nobel Prize, the first person to win a Nobel Prize twice, and the only person to win a Nobel Prize in two scientific fields.
+Her husband, Pierre Curie, was a co-winner of her first Nobel Prize, making them the first-ever married couple to win the Nobel Prize and launching the Curie family legacy of five Nobel Prizes.
+She was, in 1906, the first woman to become a professor at the University of Paris. 
+"""
+3. Next, we need to load this text as GraphDocuments and create a GraphTransformer object using the LLM-loaded
+
+documents = [Document(page_content=text)]
+llm_transformer = LLMGraphTransformer(llm=llm)
+graph_documents = llm_transformer.convert_to_graph_documents(documents)
+4. Its time to create the Knowledge Graph. For this, you better provide a list of entities and relationships you wish to extract else LLM might identify everything as an entity or relationship
+
+llm_transformer_filtered = LLMGraphTransformer(
+    llm=llm,
+    allowed_nodes=["Person", "Country", "Organization"],
+    allowed_relationships=["NATIONALITY", "LOCATED_IN", "WORKED_AT", "SPOUSE"],
+)
+graph_documents_filtered = llm_transformer_filtered.convert_to_graph_documents(
+    documents
+)
+As you must have guessed, the above snippet creates
+
+Node = “Person”, “Country”, “Organization”
+
+Relation = [“NATIONALITY”, “LOCATED_IN”, “WORKED_AT”, “SPOUSE”]
+
+Note: Any other potential node or relation would be discarded. If you aren’t sure, you can just pass the LLM object and let the LLM decide
+
+5. We now need to create a Networkx graph and add the above-identified nodes and edges to this graph
+
+graph = NetworkxEntityGraph()
+
+# Add nodes to the graph
+for node in graph_documents_filtered[0].nodes:
+    graph.add_node(node.id)
+
+# Add edges to the graph
+for edge in graph_documents_filtered[0].relationships:
+    graph._graph.add_edge(
+            edge.source.id,
+            edge.target.id,
+            relation=edge.type,
+        )
+6. Let’s create a GraphQAChain now that will help us to interact with the Knowledge Base
+
+chain = GraphQAChain.from_llm(
+    llm=llm, 
+    graph=graph, 
+    verbose=True
+)
+7. Call the chain object with your query
+
+question = """Who is Marie Curie?"""
+chain.run(question)
+Output
+
+
+We can even use GraphIndexCreator for implementing GraphRAG
+
+2. GraphIndexCreator
+
+Another approach is to use GraphIndexCreator in LangChain which is very similar to the above approach
+
+from langchain.indexes import GraphIndexCreator
+from langchain.chains import GraphQAChain
+
+index_creator = GraphIndexCreator(llm=llm)
+
+with open("/home/cdsw/sample.txt") as f:
+    all_text = f.read()
+    
+text = "\n".join(all_text.split("\n\n"))
+graph = index_creator.from_text(text)
+
+chain = GraphQAChain.from_llm(llm, graph=graph, verbose=True)
+chain.run("What did Pierre Curie won?")
+As must have understood
+
+It first create a GraphIndexCreator using an LLM
+
+Reads text from a .txt file
+
+Creates graph using the index creator
+
+Runs the GraphQA chain on the graph similar to above approach
+
+Output
+
+> Entering new GraphQAChain chain...
+
+Entities Extracted:
+ Pierre Curie
+Full Context:
+Pierre Curie was a co-winner of Marie Curie's first Nobel Prize
+
+> Finished chain.
+' Pierre Curie won the Nobel Prize in Physics in 1903, together with his wife Marie Curie and Henri Becquerel, for their research on radioactivity.'
+As I experimented, the LLMGraphTransformer approach looked better compared to GraphIndexCreator in terms of response but yes, both are quite easy to implement. Do remember, that these examples use very small datasets. If you are using a big dataset with paid APIs, be cautious as Knowledge Graph creation can lead a number of hits, costing you dearly.
+
+With this, it’s a wrap. See you soon!
