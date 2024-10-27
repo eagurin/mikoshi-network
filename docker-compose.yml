@@ -3,36 +3,40 @@ networks:
     name: mikoshi-network
     driver: bridge
     attachable: true
-    ipam:
-      driver: default
-      config:
-        - subnet: 172.28.0.0/16
+    # ipam:
+    #   driver: default
+    #   config:
+    #     - subnet: 172.28.0.0/16
     labels:
       - "com.docker.compose.recreate=always"
 
 volumes:
   letsencrypt:
     name: letsencrypt
+    external: true
   open-webui-data:
     name: open_webui_data
   pipelines-data:
     name: pipelines_data
+    external: true
   ollama-data:
     name: ollama_data
-
+    external: true
 
 services:
   traefik:
-    image: traefik:v2.9
+    image: traefik:latest
     command:
       - "--providers.docker=true"
       - "--providers.docker.exposedbydefault=false"
       - "--entrypoints.web.address=:80"
       - "--entrypoints.websecure.address=:443"
+      - "--entrypoints.websecure.http.tls.minVersion=VersionTLS10"
       - "--certificatesresolvers.myresolver.acme.email=goldmeat93@gmail.com"
       - "--certificatesresolvers.myresolver.acme.storage=/letsencrypt/acme.json"
       - "--certificatesresolvers.myresolver.acme.httpchallenge.entrypoint=web"
-      - "--log.level=DEBUG"
+      - "--certificatesresolvers.myresolver.acme.caServer=https://acme-staging-v02.api.letsencrypt.org/directory"
+      - "--log.level=INFO"
       - "--accesslog=true"
       - "--accesslog.filepath=/var/log/traefik/access.log"
       - "--api.dashboard=true"
@@ -46,24 +50,29 @@ services:
       - mikoshi-network
 
   open-webui:
+    build: .
     image: ghcr.io/open-webui/open-webui:${WEBUI_DOCKER_TAG-main}
     container_name: open-webui
+    networks:
+      mikoshi-network:
+        aliases:
+          - open-webui
     environment:
       - OLLAMA_BASE_URL=http://ollama:11434
+      - PIPELINES_BASE_URL=http://pipelines:9099
       - HTTP_PROXY=${HTTP_PROXY}
       - HTTPS_PROXY=${HTTPS_PROXY}
       - NO_PROXY=${NO_PROXY}
-      - ENABLE_RAG_WEB_SEARCH-True
+      - ENABLE_RAG_WEB_SEARCH=True
       - RAG_WEB_SEARCH_ENGINE="searxng"
       - RAG_WEB_SEARCH_RESULT_COUNT=3
       - RAG_WEB_SEARCH_CONCURRENT_REQUESTS=10
       - SEARXNG_QUERY_URL="http://searxng:8080/search?q=<query>"
-      # - .env
     ports:
       - "8080:8080"
     depends_on:
-      - pipelines
       - ollama
+      - pipelines
       - tika
     volumes:
       - /mnt/storage/data:/app/backend/data
@@ -74,8 +83,6 @@ services:
       - "traefik.http.routers.openwebui.entrypoints=websecure"
       - "traefik.http.routers.openwebui.tls.certresolver=myresolver"
       - "traefik.http.services.openwebui.loadbalancer.server.port=8080"
-    networks:
-      - mikoshi-network
     restart: always
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
@@ -92,8 +99,14 @@ services:
           memory: 20G
 
   pipelines:
+    build: .
     image: ghcr.io/open-webui/pipelines:main
     container_name: pipelines
+    hostname: pipelines
+    networks:
+      mikoshi-network:
+        aliases:
+          - pipelines
     ports:
       - "9099:9099"
     volumes:
@@ -103,16 +116,26 @@ services:
       - HTTP_PROXY=${HTTP_PROXY}
       - HTTPS_PROXY=${HTTPS_PROXY}
       - NO_PROXY=${NO_PROXY}
-      - PIPELINES_API_KEY=0p3n-w3bu!
-      - PIPELINES_URLS="https://github.com/eagurin/mikoshi-network/blob/main/pipelines/r2r_pipeline.py"
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.pipelines.rule=Host(`pipelines.localhost`)"
+      - "traefik.http.routers.pipelines.rule=Host(`pipelines.${DOMAIN_NAME:-domain.com}`)"
       - "traefik.http.routers.pipelines.entrypoints=websecure"
       - "traefik.http.routers.pipelines.tls.certresolver=myresolver"
       - "traefik.http.services.pipelines.loadbalancer.server.port=9099"
-    networks:
-      - mikoshi-network
+    restart: always
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9099/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  searxng:
+    image: searxng/searxng:latest
+    container_name: searxng
+    ports:
+      - "8091:8091"
+    volumes:
+      - ./searxng:/etc/searxng
     restart: always
 
   ollama:
