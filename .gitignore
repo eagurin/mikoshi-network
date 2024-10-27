@@ -170,3 +170,5 @@ cython_debug/
 #.idea/
 /config/config.json
 /security/
+/config/config.json
+/security/
