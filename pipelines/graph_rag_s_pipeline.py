@@ -231,7 +231,7 @@ class KnowledgeGraphPipelineOpenWebUI:
         self.valves = Pipe()
 
     async def on_startup(self):
-        directory = os.getenv('PARQUET_FILES_PATH', '/app/backend/data')
+        directory = os.getenv('PARQUET_FILES_PATH', './data')
         df = self.read_parquet_files(directory)
         if df.empty:
             logger.warning("В указанной директории нет данных.")
