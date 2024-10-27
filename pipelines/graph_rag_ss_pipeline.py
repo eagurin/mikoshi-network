@@ -5,7 +5,7 @@ date: 2024-05-30
 version: 1.0
 license: MIT
 description: A knowledge graph pipeline integrated with RAG, retrieval-based QA using LangChain, and search functionalities. This pipeline supports data ingestion, processing, and dynamic retrieval with interactive agents and FastAPI.
-requirements: pandas>=1.3.0, networkx>=2.6.3, fastapi>=0.68.0, pydantic>=1.8.0, uvicorn>=0.14.0, langchain>=0.0.100, faiss-cpu, requests, aiohttp, logging, pickle, R2R>=1.0.0
+requirements: pandas>=1.3.0, networkx>=2.6.3, fastapi>=0.68.0, pydantic>=1.8.0, uvicorn>=0.14.0, langchain>=0.0.100, faiss-cpu, requests, aiohttp, loguru, pickle, R2R>=1.0.0
 """
 
 import os
@@ -15,7 +15,7 @@ import aiohttp
 import pandas as pd
 import networkx as nx
 import requests
-import logging
+import loguru
 import pickle
 from typing import List, Dict, Optional, Callable, Awaitable, Any, Union, Generator, Iterator
 from fastapi import FastAPI, HTTPException, UploadFile, File
@@ -32,8 +32,8 @@ import uvicorn
 # убедимся, что все необходимые компоненты поддерживают асинхронность.
 
 # Настройка логирования
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+# logging.basicConfig(level=logging.INFO)
+# logger = logging.getLogger(__name__)
 
 # Настройка SSL для Python версий < 3.11
 if sys.version_info < (3, 11):
