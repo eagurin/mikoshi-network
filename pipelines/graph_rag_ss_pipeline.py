@@ -1,5 +1,14 @@
+"""
+title: Knowledge Graph Pipeline for OpenWebUI
+author: open-webui
+date: 2024-05-30
+version: 1.0
+license: MIT
+description: A knowledge graph pipeline integrated with RAG, retrieval-based QA using LangChain, and search functionalities. This pipeline supports data ingestion, processing, and dynamic retrieval with interactive agents and FastAPI.
+requirements: pandas>=1.3.0, networkx>=2.6.3, fastapi>=0.68.0, pydantic>=1.8.0, uvicorn>=0.14.0, langchain>=0.0.100, faiss-cpu, requests, aiohttp, logging, pickle, R2R>=1.0.0
+"""
+
 import os
-import json
 import sys
 import asyncio
 import aiohttp
