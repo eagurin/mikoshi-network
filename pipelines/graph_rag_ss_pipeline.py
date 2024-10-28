@@ -37,7 +37,7 @@ from fastapi import FastAPI, HTTPException, UploadFile, File
 from pydantic import BaseModel, Field, EmailStr
 from langchain.llms.base import LLM
 from langchain.embeddings import OpenAIEmbeddings
-from langchain.vectorstores import FAISS
+# from langchain.vectorstores import FAISS
 from langchain.chains import RetrievalQA
 from langchain.agents import Tool, initialize_agent, AgentType
 from langchain.memory import ConversationBufferMemory
