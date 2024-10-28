@@ -596,7 +596,7 @@ services:
       - HTTP_PROXY=${HTTP_PROXY:-}
       - HTTPS_PROXY=${HTTPS_PROXY:-}
       - NO_PROXY=${NO_PROXY:-}
-      # - PIPELINES_URLS="https://github.com/eagurin/mikoshi-network/blob/main/pipelines/graph_rag_ss_pipeline.py"
+      - PIPELINES_URLS="https://github.com/eagurin/mikoshi-network/blob/main/pipelines/pipelines/r2r_pipeline.py"
     volumes:
       - /mnt/storage/pipelines:/app/pipelines
       - pipelines_data:/app/pipelines
@@ -671,10 +671,6 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
     command: --interval 300 open-webui pipelines ollama litellm
-    # environment:
-    #   - HTTP_PROXY=${HTTP_PROXY}
-    #   - HTTPS_PROXY=${HTTPS_PROXY}
-    #   - NO_PROXY=${NO_PROXY}
     networks:
       - r2r-network
     restart: always
