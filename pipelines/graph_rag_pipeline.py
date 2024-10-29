@@ -26,7 +26,7 @@ class Pipeline:
         Выполняется при запуске сервера.
         Здесь мы загружаем данные, очищаем их и создаем граф знаний.
         """
-        directory = '/app/backend/data'
+        directory = '/app/backend/data'  # Замените на фактический путь к вашим файлам
         df = self.read_parquet_files(directory)
         if df.empty:
             print("В указанной директории нет данных.")
