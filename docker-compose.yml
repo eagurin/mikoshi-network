@@ -586,7 +586,7 @@ services:
       - "9099:9099"
     environment:
       - PIPELINES_REQUIREMENTS_PATH=./requirements.txt
-      - PIPELINES_URLS=https://github.com/eagurin/mikoshi-network/blob/main/pipelines/open_webu_pipeline.py
+      # - PIPELINES_URLS=https://github.com/eagurin/mikoshi-network/blob/main/pipelines/r2r_pipeline.py
       - HTTP_PROXY=${HTTP_PROXY:-}
       - HTTPS_PROXY=${HTTPS_PROXY:-}
       - NO_PROXY=${NO_PROXY:-}
@@ -621,7 +621,7 @@ services:
   litellm:
     image: litellm/litellm:latest
     container_name: litellm
-    platform: linux/x86_64
+    # platform: linux/x86_64
     ports:
       - "4000:4000"
     volumes:
@@ -671,6 +671,7 @@ services:
   tika:
     image: apache/tika:latest
     container_name: tika
+    command: ["-jar", "/tika-server-standard-2.9.0.jar", "-h", "0.0.0.0", "-p", "9998"]
     ports:
       - "9998:9998"
     volumes:

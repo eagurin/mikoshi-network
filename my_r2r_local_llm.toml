@@ -6,27 +6,25 @@
 system_instruction_name = "rag_agent"
 tool_names = ["search"]
 
-  [agent.generation_config]
-  model = "ollama/llama3.1"
-
 [auth]
 provider = "r2r"
 access_token_lifetime_in_minutes = 60
 refresh_token_lifetime_in_days = 7
-require_authentication = false
+require_authentication = true
 require_email_verification = false
 default_admin_email = "admin@example.com"
 default_admin_password = "change_me_immediately"
 
+
 [completion]
 provider = "litellm"
-concurrent_request_limit = 1
+concurrent_request_limit = 256
 
   [completion.generation_config]
-  model = "ollama/llama3.1"
-  temperature = 0.1
+  model = "openai/gpt-4o"
+  temperature = 0.3
   top_p = 1
-  max_tokens_to_sample = 1_024
+  max_tokens_to_sample =4_024
   stream = false
   add_generation_kwargs = { }
 
@@ -71,12 +69,14 @@ batch_size = 256
     generation_config = { model = "openai/gpt-4o-mini" }
 
 [embedding]
-provider = "ollama"
-base_model = "mxbai-embed-large"
-base_dimension = 1_024
+provider = "litellm"
+base_model = "openai/text-embedding-3-small"
+base_dimension = 512
 batch_size = 128
-add_title_as_prefix = true
-concurrent_request_limit = 2
+add_title_as_prefix = false
+rerank_model = "None"
+concurrent_request_limit = 256
+quantization_settings = { quantization_type = "FP32" }
 
 [file]
 provider = "postgres"
@@ -89,31 +89,20 @@ new_after_n_chars = 512
 max_characters = 1_024
 combine_under_n_chars = 128
 overlap = 256
-audio_transcription_model="openai/whisper-1"
-vision_img_model = "ollama/llama3.2-vision"
-vision_pdf_model = "ollama/llama3.2-vision"
 
-  [ingestion.extra_parsers]
-    pdf = "basic"
+    [ingestion.extra_parsers]
+    pdf = "unstructured"
+
+[orchestration]
+provider = "hatchet"
+kg_creation_concurrency_limit = 32
+ingestion_concurrency_limit = 128
+kg_enrichment_concurrency_limit = 8
 
 [logging]
 provider = "r2r"
 log_table = "logs"
 log_info_table = "log_info"
 
-[orchestration]
-provider = "hatchet"
-kg_creation_concurrency_lipmit = 32
-ingestion_concurrency_limit = 128
-kg_enrichment_concurrency_limit = 8
-
 [prompt]
 provider = "r2r"
-
-[email]
-provider = "console_mock"
-
-[proxy]
-http = "http://YumGkA:yFRSqo@45.154.59.33:8000"
-https = "http://YumGkA:yFRSqo@45.154.59.33:8000"
-no_proxy = "localhost,127.0.0.1,ollama,unstructured,pipelines,open-webui"
