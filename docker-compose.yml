@@ -3,10 +3,6 @@ networks:
     name: r2r-network
     driver: bridge
     attachable: true
-    # ipam:
-    #   driver: default
-    #   config:
-    #     - subnet: 172.28.0.0/16
     labels:
       - "com.docker.compose.recreate=always"
 
@@ -108,13 +104,12 @@ services:
       POSTGRES_PORT: "${POSTGRES_PORT:-5432}"
       HATCHET_POSTGRES_DBNAME: "${HATCHET_POSTGRES_DBNAME:-hatchet}"
     depends_on:
-      postgres:
-        condition: service_healthy
+      - postgres
     networks:
       - r2r-network
 
   hatchet-migration:
-    image: ghcr.io/hatchet-dev/hatchet/hatchet-migrate:v0.49.0-alpha.4
+    image: ghcr.io/hatchet-dev/hatchet/hatchet-migrate:latest
     environment:
       POSTGRES_USER: "${POSTGRES_USER:-postgres}"
       POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:-postgres}"
@@ -128,13 +123,12 @@ services:
       DATABASE_POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:-postgres}"
       HATCHET_DATABASE_POSTGRES_DB_NAME: "${HATCHET_POSTGRES_DBNAME:-hatchet}"
     depends_on:
-      hatchet-create-db:
-        condition: service_completed_successfully
+      - hatchet-create-db
     networks:
       - r2r-network
 
   hatchet-setup-config:
-    image: ghcr.io/hatchet-dev/hatchet/hatchet-admin:v0.49.0-alpha.4
+    image: ghcr.io/hatchet-dev/hatchet/hatchet-admin:latest
     command: /hatchet/hatchet-admin quickstart --skip certs --generated-config-dir /hatchet/config --overwrite=false
     environment:
       POSTGRES_USER: "${POSTGRES_USER:-postgres}"
@@ -162,20 +156,17 @@ services:
       - hatchet_certs:/hatchet/certs
       - hatchet_config:/hatchet/config
     depends_on:
-      hatchet-migration:
-        condition: service_completed_successfully
-      hatchet-rabbitmq:
-        condition: service_healthy
+      - hatchet-migration
+      - hatchet-rabbitmq
     networks:
       - r2r-network
 
   hatchet-engine:
-    image: ghcr.io/hatchet-dev/hatchet/hatchet-engine:v0.49.0-alpha.4
+    image: ghcr.io/hatchet-dev/hatchet/hatchet-engine:latest
     command: /hatchet/hatchet-engine --config /hatchet/config
     restart: on-failure
     depends_on:
-      hatchet-setup-config:
-        condition: service_completed_successfully
+      - hatchet-setup-config
     ports:
       - "7077:7077"
     environment:
@@ -215,12 +206,11 @@ services:
           memory: 3072M
 
   hatchet-dashboard:
-    image: ghcr.io/hatchet-dev/hatchet/hatchet-dashboard:v0.49.0-alpha.4
+    image: ghcr.io/hatchet-dev/hatchet/hatchet-dashboard:latest
     command: sh ./entrypoint.sh --config /hatchet/config
     restart: on-failure
     depends_on:
-      hatchet-setup-config:
-        condition: service_completed_successfully
+      - hatchet-setup-config
     environment:
       NEXT_PUBLIC_API_URL: "https://hatchet.${DOMAIN_NAME:-}"
       POSTGRES_USER: "${POSTGRES_USER:-postgres}"
@@ -250,7 +240,7 @@ services:
           memory: 256M
 
   setup-token:
-    image: ghcr.io/hatchet-dev/hatchet/hatchet-admin:v0.49.0-alpha.4
+    image: ghcr.io/hatchet-dev/hatchet/hatchet-admin:latest
     command: >
       sh -c "
         set -e
@@ -321,8 +311,7 @@ services:
       - hatchet_config:/hatchet/config
       - hatchet_api_key:/hatchet_api_key
     depends_on:
-      hatchet-setup-config:
-        condition: service_completed_successfully
+      - hatchet-setup-config
     deploy:
       resources:
         limits:
@@ -355,7 +344,7 @@ services:
   r2r:
     image: ragtoriches/prod:latest
     build:
-      context: .
+      # context: .
       args:
         R2R_PORT: ${R2R_PORT:-7272}
         R2R_HOST: ${R2R_HOST:-0.0.0.0}
@@ -372,13 +361,14 @@ services:
       - PORT=${PORT:-7272}
       - HOST=${HOST:-0.0.0.0}
       - CONFIG_NAME=${CONFIG_NAME:-}
-      - CONFIG_PATH=${CONFIG_PATH:-./config/r2r.toml}
+      - CONFIG_PATH=${CONFIG_PATH:-./r2r.toml}
       - POSTGRES_USER=${POSTGRES_USER:-postgres}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-postgres}
       - POSTGRES_HOST=${POSTGRES_HOST:-postgres}
       - POSTGRES_PORT=${POSTGRES_PORT:-5432}
       - POSTGRES_DBNAME=${POSTGRES_DBNAME:-postgres}
-      
+      - PROJECT_NAME=${PROJECT_NAME:-r2r_default}
+
       # R2R
       - R2R_CONFIG_NAME=${R2R_CONFIG_NAME:-} # Eventually get rid of CONFIG_NAME, but for now keep it for backwards compatibility
       - R2R_CONFIG_PATH=${R2R_CONFIG_PATH:-./r2r.toml} # Eventually get rid of CONFIG_PATH, but for now keep it for backwards compatibility
@@ -452,12 +442,9 @@ services:
     extra_hosts:
       - host.docker.internal:host-gateway
     depends_on:
-      postgres:
-        condition: service_healthy
-      setup-token:
-        condition: service_completed_successfully
-      unstructured:
-        condition: service_healthy
+      - postgres
+      - setup-token
+      - unstructured
     deploy:
       resources:
         limits:
@@ -501,7 +488,6 @@ services:
       - "--certificatesresolvers.myresolver.acme.email=goldmeat93@gmail.com"
       - "--certificatesresolvers.myresolver.acme.storage=/letsencrypt/acme.json"
       - "--certificatesresolvers.myresolver.acme.httpchallenge.entrypoint=web"
-      - "--certificatesresolvers.myresolver.acme.caServer=https://acme-staging-v02.api.letsencrypt.org/directory"
       - "--log.level=DEBUG"
       - "--accesslog=true"
       - "--accesslog.filepath=/var/log/traefik/access.log"
@@ -528,6 +514,7 @@ services:
     container_name: ollama
     volumes:
       - ollama_data:/root/.ollama
+      - open_webui_data:/app/backend/data
     pull_policy: always
     tty: true
     networks:
@@ -543,14 +530,16 @@ services:
           - open-webui
     environment:
       - OLLAMA_BASE_URL=http://ollama:11434
+      - OLLAMA_MAX_QUEUE=8
       - PIPELINES_BASE_URL=http://pipelines:9099
+      - HF_ENDPOINT=https://hf-mirror.com/
       - HTTP_PROXY=${HTTP_PROXY}
       - HTTPS_PROXY=${HTTPS_PROXY}
       - NO_PROXY=${NO_PROXY}
       - ENABLE_RAG_WEB_SEARCH=True
       - RAG_WEB_SEARCH_ENGINE=searxng
-      - RAG_WEB_SEARCH_RESULT_COUNT=10
-      - RAG_WEB_SEARCH_CONCURRENT_REQUESTS=30
+      - RAG_WEB_SEARCH_RESULT_COUNT=3
+      - RAG_WEB_SEARCH_CONCURRENT_REQUESTS=10
       - SEARXNG_QUERY_URL="http://searxng:8091/search?q=<query>"
     ports:
       - "8080:8080"
@@ -558,7 +547,10 @@ services:
       - ollama
       - pipelines
       - tika
+    extra_hosts:
+      - host.docker.internal:host-gateway
     volumes:
+      - ./config/config.yaml:/app/config.yaml
       - /mnt/storage/data:/app/backend/data
       - open_webui_data:/app/backend/data
     labels:
@@ -576,14 +568,14 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '4.0'
+          cpus: '8.0'
           memory: 24G
         reservations:
-          cpus: '3.0'
+          cpus: '6.0'
           memory: 20G
 
   pipelines:
-    image: ghcr.io/open-webui/pipelines:main
+    image: ghcr.io/open-webui/pipelines:latest
     container_name: pipelines
     hostname: pipelines
     networks:
@@ -593,10 +585,13 @@ services:
     ports:
       - "9099:9099"
     environment:
+      - PIPELINES_REQUIREMENTS_PATH=./requirements.txt
+      - PIPELINES_URLS=https://github.com/eagurin/mikoshi-network/blob/main/pipelines/open_webu_pipeline.py
       - HTTP_PROXY=${HTTP_PROXY:-}
       - HTTPS_PROXY=${HTTPS_PROXY:-}
       - NO_PROXY=${NO_PROXY:-}
-      - PIPELINES_URLS="https://github.com/eagurin/mikoshi-network/blob/main/pipelines/pipelines/r2r_pipeline.py"
+    extra_hosts:
+      - host.docker.internal:host-gateway
     volumes:
       - /mnt/storage/pipelines:/app/pipelines
       - pipelines_data:/app/pipelines
@@ -621,24 +616,22 @@ services:
       - "8091:8091"
     volumes:
       - ./searxng:/etc/searxng
-    environment:
-      - HTTP_PROXY=${HTTP_PROXY}
-      - HTTPS_PROXY=${HTTPS_PROXY}
-      - NO_PROXY=${NO_PROXY}
     restart: always
 
   litellm:
     image: litellm/litellm:latest
     container_name: litellm
+    platform: linux/x86_64
     ports:
       - "4000:4000"
     volumes:
-      - /home/admin/mikoshi/config.yaml:/app/config.yaml
+      - ./config.yaml:/app/config.yaml
     environment:
       - UI_USERNAME=${UI_USERNAME:-}
       - UI_PASSWORD=${UI_PASSWORD:-}
       - LITELLM_MASTER_KEY=${LITELLM_MASTER_KEY:-}
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - HUGGING_FACE_API_KEY=${HUGGING_FACE_API_KEY:-}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
       - AZURE_AD_TOKEN=${AZURE_AD_TOKEN:-}
       - AZURE_AD_TOKEN_PROVIDER=${AZURE_AD_TOKEN_PROVIDER:-}
@@ -680,6 +673,8 @@ services:
     container_name: tika
     ports:
       - "9998:9998"
+    volumes:
+      - open_webui_data:/app/backend/data
     networks:
       - r2r-network
 

@@ -87,3 +87,17 @@ model_list:
       model_identifier: "openai-dall-e-3-id"
       model_details:
         description: "OpenAI DALL-E 3 model for advanced image generation"
+
+  - model_name: codebert-base
+    litellm_params:
+      model: huggingface/microsoft/codebert-base
+      master_key: "${LITELLM_MASTER_KEY}"
+      api_key: "${HUGGING_FACE_API_KEY}"
+      drop_params: True
+      proxy:
+        http: "${HTTP_PROXY}"
+        https: "${HTTPS_PROXY}"
+        no_proxy: "${NO_PROXY}"
+      model_identifier: "codebert-base-id"
+      model_details:
+        description: "CodeBERT base model from Hugging Face"

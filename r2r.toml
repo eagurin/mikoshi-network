@@ -39,13 +39,9 @@ provider = "bcrypt"
 provider = "postgres"
 
 [embedding]
-provider = "ollama"
-base_model = "mxbai-embed-large"
-base_dimension = 1_024
-batch_size = 32
-add_title_as_prefix = true
-rerank_model = "None"
-concurrent_request_limit = 32
+provider = "litellm"
+base_model = "huggingface/microsoft/codebert-base"
+base_dimension = 768
 
 [file]
 provider = "postgres"
@@ -75,8 +71,24 @@ provider = "local"
 log_table = "logs"
 log_info_table = "log_info"
 
+[ingestion]
+provider = "unstructured_local"
+strategy = "auto"
+chunking_strategy = "by_title"
+new_after_n_chars = 512
+max_characters = 1_024
+combine_under_n_chars = 128
+overlap = 256
+
+    [ingestion.extra_parsers]
+    pdf = "zerox"
+
+
 [orchestration]
 provider = "hatchet"
+kg_creation_concurrency_lipmit = 32
+ingestion_concurrency_limit = 128
+kg_enrichment_concurrency_limit = 8
 
 [parsing]
 provider = "unstructured_local"

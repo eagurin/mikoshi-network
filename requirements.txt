@@ -1,7 +1,0 @@
-r2r[core,ingestion-bundle,hatchet]>=1.0.0
-langchain>=0.0.200
-fastapi
-uvicorn[standard]
-pandas
-networkx
-plotly
