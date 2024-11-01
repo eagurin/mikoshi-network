@@ -179,7 +179,7 @@ services:
       hatchet-setup-config:
         condition: service_completed_successfully
     ports:
-      - "7077:7077"
+      - "${R2R_HATCHET_ENGINE_PORT:-7077}:7077"
     environment:
       HTTP_PROXY: ${HTTP_PROXY:-}
       HTTPS_PROXY: ${HTTPS_PROXY:-}
@@ -192,7 +192,7 @@ services:
       DATABASE_URL: "postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@${POSTGRES_HOST:-postgres}:${POSTGRES_PORT:-5432}/${HATCHET_POSTGRES_DBNAME:-hatchet}?sslmode=disable"
       SERVER_GRPC_BROADCAST_ADDRESS: "host.docker.internal:7077"
       SERVER_GRPC_BIND_ADDRESS: "0.0.0.0"
-      SERVER_GRPC_PORT: 7077
+      SERVER_GRPC_PORT: "7077"
       SERVER_GRPC_INSECURE: "t"
       SERVER_GRPC_MAX_MSG_SIZE: 13421772800
     volumes:
@@ -236,6 +236,8 @@ services:
       - hatchet_config:/hatchet/config
     networks:
       - r2r-network
+    ports:
+      - "${R2R_HATCHET_DASHBOARD_PORT:-7274}:80"
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.hatchet-dashboard.rule=Host(`hatchet.${DOMAIN_NAME}`)"
@@ -467,7 +469,8 @@ services:
   r2r-dashboard:
     image: emrgntcmplxty/r2r-dashboard:latest
     environment:
-      - NEXT_PUBLIC_API_URL=https://api.${DOMAIN_NAME}
+      - NEXT_PUBLIC_R2R_DEPLOYMENT_URL=${R2R_DEPLOYMENT_URL:-http://localhost:7272}
+      - NEXT_PUBLIC_HATCHET_DASHBOARD_URL=${HATCHET_DASHBOARD_URL:-http://localhost:${R2R_HATCHET_DASHBOARD_PORT:-7274}}
     networks:
       - r2r-network
     labels:
@@ -476,6 +479,8 @@ services:
       - "traefik.http.routers.r2r-dashboard.entrypoints=websecure"
       - "traefik.http.routers.r2r-dashboard.tls.certresolver=myresolver"
       - "traefik.http.services.r2r-dashboard.loadbalancer.server.port=3000"
+    ports:
+      - "${R2R_DASHBOARD_PORT:-7273}:3000"
     deploy:
       resources:
         limits:
