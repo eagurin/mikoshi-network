@@ -1,0 +1,247 @@
+networks:
+  r2r-network:
+    name: r2r-network
+    driver: bridge
+    attachable: true
+    # ipam:
+    #   driver: default
+    #   config:
+    #     - subnet: 172.28.0.0/16
+    labels:
+      - "com.docker.compose.recreate=always"
+
+volumes:
+  ollama_data:
+  open_webui_data:
+  pipelines_data:
+  letsencrypt:
+
+services:
+  traefik:
+    image: traefik:latest
+    command:
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--api.insecure=true"
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.websecure.address=:443"
+      - "--metrics.prometheus=true"
+      - "--metrics.prometheus.entrypoint=metrics"
+      - "--certificatesresolvers.myresolver.acme.email=goldmeat93@gmail.com"
+      - "--certificatesresolvers.myresolver.acme.storage=/letsencrypt/acme.json"
+      - "--certificatesresolvers.myresolver.acme.httpchallenge.entrypoint=web"
+      # - "--certificatesresolvers.myresolver.acme.caServer=https://acme-staging-v02.api.letsencrypt.org/directory"
+      - "--log.level=DEBUG"
+      - "--accesslog=true"
+      - "--accesslog.filepath=/var/log/traefik/access.log"
+      - "--api.dashboard=true"
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - letsencrypt:/letsencrypt
+    networks:
+      - r2r-network
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 256M
+
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ollama
+    volumes:
+      - ollama_data:/root/.ollama
+    pull_policy: always
+    tty: true
+    networks:
+      - r2r-network
+    restart: always
+
+  open-webui:
+    image: ghcr.io/open-webui/open-webui:${WEBUI_DOCKER_TAG-main}
+    container_name: open-webui
+    networks:
+      r2r-network:
+        aliases:
+          - open-webui
+    environment:
+      - OLLAMA_BASE_URL=http://ollama:11434
+      - PIPELINES_BASE_URL=http://pipelines:9099
+      - http_proxy=http://Tky79m:cXXV9B@209.46.3.110:8000
+      - https_proxy=http://Tky79m:cXXV9B@209.46.3.110:8000
+      - no_proxy=.mit.edu,localhost,127.0.0.1,ollama,unstructured,pipelines,open-webui,litellm,searxng
+      - NODE_OPTIONS=--max-old-space-size=4096
+      - ENABLE_RAG_WEB_SEARCH=True
+      - RAG_WEB_SEARCH_ENGINE=searxng
+      - RAG_WEB_SEARCH_RESULT_COUNT=10
+      - RAG_WEB_SEARCH_CONCURRENT_REQUESTS=30
+      - SEARXNG_QUERY_URL="http://searxng:8091/search?q=<query>"
+    ports:
+      - "8080:8080"
+    depends_on:
+      - ollama
+      - pipelines
+      - tika
+    volumes:
+      - ./config.yaml:/app/backend/data/litellm/config.yaml
+      - /mnt/storage/data:/app/backend/data
+      - open_webui_data:/app/backend/data
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.openwebui.rule=Host(`${DOMAIN_NAME:-}`)"
+      - "traefik.http.routers.openwebui.entrypoints=websecure"
+      - "traefik.http.routers.openwebui.tls.certresolver=myresolver"
+      - "traefik.http.services.openwebui.loadbalancer.server.port=8080"
+    restart: always
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          cpus: '4.0'
+          memory: 24G
+        reservations:
+          cpus: '3.0'
+          memory: 20G
+
+  pipelines:
+    image: ghcr.io/open-webui/pipelines:main
+    container_name: pipelines
+    hostname: pipelines
+    networks:
+      r2r-network:
+        aliases:
+          - pipelines
+    ports:
+      - "9099:9099"
+    environment:
+      - http_proxy=http://Tky79m:cXXV9B@209.46.3.110:8000
+      - https_proxy=http://Tky79m:cXXV9B@209.46.3.110:8000
+      - no_proxy=.mit.edu,localhost,127.0.0.1,ollama,unstructured,pipelines,open-webui,litellm,searxng
+      - PIPELINES_URLS="https://github.com/eagurin/mikoshi-network/blob/main/pipelines/r2r_pipeline.py"
+    volumes:
+      - /mnt/storage/pipelines:/app/pipelines
+      - pipelines_data:/app/pipelines
+      - open_webui_data:/app/backend/data
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.pipelines.rule=Host(`pipelines.${DOMAIN_NAME:-}`)"
+      - "traefik.http.routers.pipelines.entrypoints=websecure"
+      - "traefik.http.routers.pipelines.tls.certresolver=myresolver"
+      - "traefik.http.services.pipelines.loadbalancer.server.port=9099"
+    restart: always
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9099/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # searxng:
+  #   image: searxng/searxng:latest
+  #   container_name: searxng
+  #   ports:
+  #     - "8091:8091"
+  #   volumes:
+  #     - ./searxng:/etc/searxng
+  #   environment:
+  #     - HTTP_PROXY=${HTTP_PROXY}
+  #     - HTTPS_PROXY=${HTTPS_PROXY}
+  #     - NO_PROXY=${NO_PROXY}
+  #   restart: always
+
+  # litellm:
+  #   image: litellm/litellm:latest
+  #   container_name: litellm
+  #   ports:
+  #     - "4000:4000"
+  #   volumes:
+  #     - ./config.yaml:/app/config.yaml
+  #   environment:
+  #     - UI_USERNAME=${UI_USERNAME:-}
+  #     - UI_PASSWORD=${UI_PASSWORD:-}
+  #     - LITELLM_MASTER_KEY=${LITELLM_MASTER_KEY:-}
+  #     - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+  #     - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+  #     - AZURE_AD_TOKEN=${AZURE_AD_TOKEN:-}
+  #     - AZURE_AD_TOKEN_PROVIDER=${AZURE_AD_TOKEN_PROVIDER:-}
+  #     - AZURE_OPENAI_API_KEY=${AZURE_OPENAI_API_KEY:-}
+  #     - AZURE_API_BASE=${AZURE_API_BASE:-}
+  #     - AZURE_API_VERSION=${AZURE_API_VERSION:-}
+  #     - GOOGLE_APPLICATION_CREDENTIALS=${GOOGLE_APPLICATION_CREDENTIALS:-}
+  #     - VERTEX_PROJECT=${VERTEX_PROJECT:-}
+  #     - VERTEX_LOCATION=${VERTEX_LOCATION:-}
+  #     - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID:-}
+  #     - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY:-}
+  #     - AWS_REGION_NAME=${AWS_REGION_NAME:-}
+  #     - GROQ_API_KEY=${GROQ_API_KEY:-}
+  #     - COHERE_API_KEY=${COHERE_API_KEY:-}
+  #     - ANYSCALE_API_KEY=${ANYSCALE_API_KEY:-}
+  #     - OLLAMA_API_BASE=http://ollama:11434
+  #   networks:
+  #     - r2r-network
+  #   restart: always
+  #   labels:
+  #     - "traefik.enable=true"
+  #     - "traefik.http.routers.litellm.rule=Host(`litellm.${DOMAIN_NAME:-}`)"
+  #     - "traefik.http.routers.litellm.entrypoints=websecure"
+  #     - "traefik.http.routers.litellm.tls.certresolver=myresolver"
+  #     - "traefik.http.services.litellm.loadbalancer.server.port=4000"
+
+  # watchtower:
+  #   image: containrrr/watchtower
+  #   container_name: watchtower
+  #   volumes:
+  #     - /var/run/docker.sock:/var/run/docker.sock
+  #   command: --interval 300 open-webui pipelines ollama litellm
+  #   networks:
+  #     - r2r-network
+  #   restart: always
+
+  tika:
+    image: apache/tika:latest
+    container_name: tika
+    ports:
+      - "9998:9998"
+    networks:
+      - r2r-network
+
+  # prometheus:
+  #   image: prom/prometheus:latest
+  #   container_name: prometheus
+  #   volumes:
+  #     - ./prometheus.yml:/etc/prometheus/prometheus.yml
+  #   labels:
+  #     - "traefik.enable=true"
+  #     - "traefik.http.routers.prometheus.rule=Host(`prometheus.${DOMAIN_NAME:-}`)"
+  #     - "traefik.http.routers.prometheus.entrypoints=websecure"
+  #     - "traefik.http.routers.prometheus.tls.certresolver=myresolver"
+  #     - "traefik.http.services.prometheus.loadbalancer.server.port=9090"
+  #   networks:
+  #     - r2r-network
+  #   restart: always
+
+  # grafana:
+  #   image: grafana/grafana:latest
+  #   container_name: grafana
+  #   environment:
+  #     - GF_SECURITY_ADMIN_PASSWORD=admin
+  #   labels:
+  #     - "traefik.enable=true"
+  #     - "traefik.http.routers.grafana.rule=Host(`grafana.${DOMAIN_NAME:-}`)"
+  #     - "traefik.http.routers.grafana.entrypoints=websecure"
+  #     - "traefik.http.routers.grafana.tls.certresolver=myresolver"
+  #     - "traefik.http.services.grafana.loadbalancer.server.port=3000"
+  #   networks:
+  #     - r2r-network
+  #   depends_on:
+  #     - prometheus
+  #   restart: always

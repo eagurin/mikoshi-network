@@ -130,7 +130,6 @@ ENV/
 env.bak/
 venv.bak/
 
-data/
 # pipelines/
 R2R/
 rag/
@@ -173,3 +172,6 @@ cython_debug/
 /security/
 /config/config.json
 /security/
+
+.DS_Store                                                                                                                                100% 6148   273.8KB/s   00:00    
+.idea/

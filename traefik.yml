@@ -1,0 +1,99 @@
+api:
+  dashboard: true
+
+entryPoints:
+  http:
+    address: ":80"
+    forwardedHeaders:
+      trustedIPs:
+        - 127.0.0.1/32
+        - 192.168.0.0/16
+        - 172.16.0.0/12
+        - 10.0.0.0/8
+  https:
+    address: ":443"
+    http:
+      tls: {}
+    forwardedHeaders:
+      trustedIPs:
+        - 127.0.0.1/32
+        - 192.168.0.0/16
+        - 172.16.0.0/12
+        - 10.0.0.0/8
+  metrics:                 # Added metrics entry point
+    address: ":9100"
+
+providers:
+  docker:
+    endpoint: "unix:///var/run/docker.sock"
+    exposedByDefault: false
+    defaultRule: "Host(`{{ index .Labels \"com.docker.compose.service\"}}.mikoshi.company`)"
+    network: proxy
+  file:
+    directory: "/configs"
+    watch: true
+
+certificatesResolvers:
+  http:
+    acme:
+      email: cert@mikoshi.company
+      storage: acme.json
+      httpChallenge:
+        entryPoint: http
+  letsencrypt:
+    acme:
+      email: cert@mikoshi.company
+      storage: acme.json
+      dnsChallenge:
+        provider: cloudflare
+        resolvers:
+          - "1.1.1.1:53"
+          - "1.0.0.1:53"
+  zerossl:
+    acme:
+      caServer: https://acme.zerossl.com/v2/DV90
+      email: cert@mikoshi.company
+      storage: acme.json
+      dnsChallenge:
+        provider: cloudflare
+        resolvers:
+          - "1.1.1.1:53"
+          - "1.0.0.1:53"
+      eab:
+        kid: sdjkflUHKer79HLK
+        hmacEncoded: sjflkJLHeh5JHfdGUIGEJ8ASdyouhj43
+
+serversTransport:
+  insecureSkipVerify: false
+
+accessLog:
+  filePath: "/logs/access.log"
+  fields:
+    headers:
+      names:
+        User-Agent: keep
+
+log:
+  filePath: "/logs/traefik.log"
+  level: INFO
+
+# TLS Options (tls.yml in /configs directory)
+
+tls:
+  options:
+    default:
+      minVersion: VersionTLS12
+      cipherSuites:
+        - "TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256"
+        - "TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384"
+        - "TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305"
+        - "TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256"
+        - "TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384"
+        - "TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305"
+
+# Prometheus Metrics Configuration
+metrics:
+  prometheus:
+    entryPoint: metrics    # Reference to the metrics entry point
+    addEntryPointsLabels: true
+    addServicesLabels: true

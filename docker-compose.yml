@@ -3,6 +3,10 @@ networks:
     name: r2r-network
     driver: bridge
     attachable: true
+    ipam:
+      driver: default
+      # config:
+      #   - subnet: 172.28.0.0/16
     labels:
       - "com.docker.compose.recreate=always"
 
@@ -17,8 +21,10 @@ volumes:
   open_webui_data:
   pipelines_data:
   letsencrypt:
+  litellm_postgres_data:
 
 services:
+
   postgres:
     image: pgvector/pgvector:pg16
     environment:
@@ -104,7 +110,8 @@ services:
       POSTGRES_PORT: "${POSTGRES_PORT:-5432}"
       HATCHET_POSTGRES_DBNAME: "${HATCHET_POSTGRES_DBNAME:-hatchet}"
     depends_on:
-      - postgres
+      postgres:
+        condition: service_healthy
     networks:
       - r2r-network
 
@@ -123,7 +130,8 @@ services:
       DATABASE_POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:-postgres}"
       HATCHET_DATABASE_POSTGRES_DB_NAME: "${HATCHET_POSTGRES_DBNAME:-hatchet}"
     depends_on:
-      - hatchet-create-db
+      hatchet-create-db:
+        condition: service_completed_successfully
     networks:
       - r2r-network
 
@@ -156,8 +164,10 @@ services:
       - hatchet_certs:/hatchet/certs
       - hatchet_config:/hatchet/config
     depends_on:
-      - hatchet-migration
-      - hatchet-rabbitmq
+      hatchet-migration:
+        condition: service_completed_successfully
+      hatchet-rabbitmq:
+        condition: service_healthy
     networks:
       - r2r-network
 
@@ -166,7 +176,8 @@ services:
     command: /hatchet/hatchet-engine --config /hatchet/config
     restart: on-failure
     depends_on:
-      - hatchet-setup-config
+      hatchet-setup-config:
+        condition: service_completed_successfully
     ports:
       - "7077:7077"
     environment:
@@ -210,9 +221,10 @@ services:
     command: sh ./entrypoint.sh --config /hatchet/config
     restart: on-failure
     depends_on:
-      - hatchet-setup-config
+      hatchet-setup-config:
+        condition: service_completed_successfully
     environment:
-      NEXT_PUBLIC_API_URL: "https://hatchet.${DOMAIN_NAME:-}"
+      NEXT_PUBLIC_API_URL: "https://hatchet.${DOMAIN_NAME}"
       POSTGRES_USER: "${POSTGRES_USER:-postgres}"
       POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:-postgres}"
       POSTGRES_HOST: host.docker.internal
@@ -226,7 +238,7 @@ services:
       - r2r-network
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.hatchet-dashboard.rule=Host(`hatchet.${DOMAIN_NAME:-}`)"
+      - "traefik.http.routers.hatchet-dashboard.rule=Host(`hatchet.${DOMAIN_NAME}`)"
       - "traefik.http.routers.hatchet-dashboard.entrypoints=websecure"
       - "traefik.http.routers.hatchet-dashboard.tls.certresolver=myresolver"
       - "traefik.http.services.hatchet-dashboard.loadbalancer.server.port=80"
@@ -311,7 +323,8 @@ services:
       - hatchet_config:/hatchet/config
       - hatchet_api_key:/hatchet_api_key
     depends_on:
-      - hatchet-setup-config
+      hatchet-setup-config:
+        condition: service_completed_successfully
     deploy:
       resources:
         limits:
@@ -343,11 +356,11 @@ services:
 
   r2r:
     image: ragtoriches/prod:latest
-    build:
-      # context: .
-      args:
-        R2R_PORT: ${R2R_PORT:-7272}
-        R2R_HOST: ${R2R_HOST:-0.0.0.0}
+    # build:
+    #   context: .
+    #   args:
+    #     R2R_PORT: ${R2R_PORT:-7272}
+    #     R2R_HOST: ${R2R_HOST:-0.0.0.0}
     ports:
       - "${R2R_PORT:-7272}:${R2R_PORT:-7272}"
     environment:
@@ -361,14 +374,13 @@ services:
       - PORT=${PORT:-7272}
       - HOST=${HOST:-0.0.0.0}
       - CONFIG_NAME=${CONFIG_NAME:-}
-      - CONFIG_PATH=${CONFIG_PATH:-./r2r.toml}
+      - CONFIG_PATH=${CONFIG_PATH:-./config/r2r.toml}
       - POSTGRES_USER=${POSTGRES_USER:-postgres}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-postgres}
       - POSTGRES_HOST=${POSTGRES_HOST:-postgres}
       - POSTGRES_PORT=${POSTGRES_PORT:-5432}
       - POSTGRES_DBNAME=${POSTGRES_DBNAME:-postgres}
-      - PROJECT_NAME=${PROJECT_NAME:-r2r_default}
-
+      
       # R2R
       - R2R_CONFIG_NAME=${R2R_CONFIG_NAME:-} # Eventually get rid of CONFIG_NAME, but for now keep it for backwards compatibility
       - R2R_CONFIG_PATH=${R2R_CONFIG_PATH:-./r2r.toml} # Eventually get rid of CONFIG_PATH, but for now keep it for backwards compatibility
@@ -430,21 +442,19 @@ services:
       - hatchet_api_key:/hatchet_api_key:ro
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.r2r.rule=Host(`api.${DOMAIN_NAME:-}`)"
+      - "traefik.http.routers.r2r.rule=Host(`api.${DOMAIN_NAME}`)"
       - "traefik.http.routers.r2r.entrypoints=websecure"
       - "traefik.http.routers.r2r.tls.certresolver=myresolver"
       - "traefik.http.services.r2r.loadbalancer.server.port=${PORT:-7272}"
-      - "traefik.http.middlewares.r2r-headers.headers.customrequestheaders.Access-Control-Allow-Origin=*"
-      - "traefik.http.middlewares.r2r-headers.headers.customrequestheaders.Access-Control-Allow-Methods=GET,POST,OPTIONS"
-      - "traefik.http.middlewares.r2r-headers.headers.customrequestheaders.Access-Control-Allow-Headers=DNT,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Range,Authorization"
-      - "traefik.http.middlewares.r2r-headers.headers.customresponseheaders.Access-Control-Expose-Headers=Content-Length,Content-Range"
-      - "traefik.http.routers.r2r.middlewares=r2r-headers"
     extra_hosts:
       - host.docker.internal:host-gateway
     depends_on:
-      - postgres
-      - setup-token
-      - unstructured
+      postgres:
+        condition: service_healthy
+      setup-token:
+        condition: service_completed_successfully
+      unstructured:
+        condition: service_healthy
     deploy:
       resources:
         limits:
@@ -457,12 +467,12 @@ services:
   r2r-dashboard:
     image: emrgntcmplxty/r2r-dashboard:latest
     environment:
-      - NEXT_PUBLIC_API_URL=https://api.${DOMAIN_NAME:-}
+      - NEXT_PUBLIC_API_URL=https://api.${DOMAIN_NAME}
     networks:
       - r2r-network
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.r2r-dashboard.rule=Host(`r2r.${DOMAIN_NAME:-}`)"
+      - "traefik.http.routers.r2r-dashboard.rule=Host(`r2r.${DOMAIN_NAME}`)"
       - "traefik.http.routers.r2r-dashboard.entrypoints=websecure"
       - "traefik.http.routers.r2r-dashboard.tls.certresolver=myresolver"
       - "traefik.http.services.r2r-dashboard.loadbalancer.server.port=3000"
@@ -485,9 +495,10 @@ services:
       - "--entrypoints.websecure.address=:443"
       - "--metrics.prometheus=true"
       - "--metrics.prometheus.entrypoint=metrics"
-      - "--certificatesresolvers.myresolver.acme.email=goldmeat93@gmail.com"
+      - "--certificatesresolvers.myresolver.acme.email=${ACME_EMAIL}"
       - "--certificatesresolvers.myresolver.acme.storage=/letsencrypt/acme.json"
       - "--certificatesresolvers.myresolver.acme.httpchallenge.entrypoint=web"
+      - "--certificatesresolvers.myresolver.acme.caServer=https://acme-v02.api.letsencrypt.org/directory"
       - "--log.level=DEBUG"
       - "--accesslog=true"
       - "--accesslog.filepath=/var/log/traefik/access.log"
@@ -514,12 +525,14 @@ services:
     container_name: ollama
     volumes:
       - ollama_data:/root/.ollama
-      - open_webui_data:/app/backend/data
     pull_policy: always
     tty: true
     networks:
       - r2r-network
     restart: always
+    command: ["serve", "-s", "0.0.0.0:11434"]
+    ports:
+      - "11434:11434"
 
   open-webui:
     image: ghcr.io/open-webui/open-webui:${WEBUI_DOCKER_TAG-main}
@@ -530,16 +543,15 @@ services:
           - open-webui
     environment:
       - OLLAMA_BASE_URL=http://ollama:11434
-      - OLLAMA_MAX_QUEUE=8
       - PIPELINES_BASE_URL=http://pipelines:9099
-      - HF_ENDPOINT=https://hf-mirror.com/
-      - HTTP_PROXY=${HTTP_PROXY}
-      - HTTPS_PROXY=${HTTPS_PROXY}
-      - NO_PROXY=${NO_PROXY}
+      - http_proxy=http://Tky79m:cXXV9B@209.46.3.110:8000
+      - https_proxy=http://Tky79m:cXXV9B@209.46.3.110:8000
+      - no_proxy=.mit.edu,localhost,127.0.0.1,ollama,unstructured,pipelines,open-webui,litellm,searxng
+      - NODE_OPTIONS=--max-old-space-size=4096
       - ENABLE_RAG_WEB_SEARCH=True
       - RAG_WEB_SEARCH_ENGINE=searxng
-      - RAG_WEB_SEARCH_RESULT_COUNT=3
-      - RAG_WEB_SEARCH_CONCURRENT_REQUESTS=10
+      - RAG_WEB_SEARCH_RESULT_COUNT=10
+      - RAG_WEB_SEARCH_CONCURRENT_REQUESTS=30
       - SEARXNG_QUERY_URL="http://searxng:8091/search?q=<query>"
     ports:
       - "8080:8080"
@@ -547,15 +559,13 @@ services:
       - ollama
       - pipelines
       - tika
-    extra_hosts:
-      - host.docker.internal:host-gateway
     volumes:
-      - ./config/config.yaml:/app/config.yaml
-      - /mnt/storage/data:/app/backend/data
+      - ./config.yaml:/app/backend/data/litellm/config.yaml
+      # - /mnt/storage/data:/app/backend/data
       - open_webui_data:/app/backend/data
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.openwebui.rule=Host(`${DOMAIN_NAME:-}`)"
+      - "traefik.http.routers.openwebui.rule=Host(`${DOMAIN_NAME}`)"
       - "traefik.http.routers.openwebui.entrypoints=websecure"
       - "traefik.http.routers.openwebui.tls.certresolver=myresolver"
       - "traefik.http.services.openwebui.loadbalancer.server.port=8080"
@@ -568,14 +578,14 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '8.0'
+          cpus: '4.0'
           memory: 24G
         reservations:
-          cpus: '6.0'
+          cpus: '3.0'
           memory: 20G
 
   pipelines:
-    image: ghcr.io/open-webui/pipelines:latest
+    image: ghcr.io/open-webui/pipelines:main
     container_name: pipelines
     hostname: pipelines
     networks:
@@ -585,20 +595,17 @@ services:
     ports:
       - "9099:9099"
     environment:
-      - PIPELINES_REQUIREMENTS_PATH=./requirements.txt
-      # - PIPELINES_URLS=https://github.com/eagurin/mikoshi-network/blob/main/pipelines/r2r_pipeline.py
-      - HTTP_PROXY=${HTTP_PROXY:-}
-      - HTTPS_PROXY=${HTTPS_PROXY:-}
-      - NO_PROXY=${NO_PROXY:-}
-    extra_hosts:
-      - host.docker.internal:host-gateway
+      - http_proxy=http://Tky79m:cXXV9B@209.46.3.110:8000
+      - https_proxy=http://Tky79m:cXXV9B@209.46.3.110:8000
+      - no_proxy=.mit.edu,localhost,127.0.0.1,ollama,unstructured,pipelines,open-webui,litellm,searxng
+      # - PIPELINES_URLS="https://github.com/eagurin/mikoshi-network/blob/main/pipelines/r2r_pipeline.py"
     volumes:
       - /mnt/storage/pipelines:/app/pipelines
       - pipelines_data:/app/pipelines
       - open_webui_data:/app/backend/data
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.pipelines.rule=Host(`pipelines.${DOMAIN_NAME:-}`)"
+      - "traefik.http.routers.pipelines.rule=Host(`pipelines.${DOMAIN_NAME}`)"
       - "traefik.http.routers.pipelines.entrypoints=websecure"
       - "traefik.http.routers.pipelines.tls.certresolver=myresolver"
       - "traefik.http.services.pipelines.loadbalancer.server.port=9099"
@@ -609,6 +616,14 @@ services:
       timeout: 10s
       retries: 3
 
+  tika:
+    image: apache/tika:latest
+    container_name: tika
+    ports:
+      - "9998:9998"
+    networks:
+      - r2r-network
+
   searxng:
     image: searxng/searxng:latest
     container_name: searxng
@@ -616,44 +631,78 @@ services:
       - "8091:8091"
     volumes:
       - ./searxng:/etc/searxng
+    environment:
+      - HTTP_PROXY=${HTTP_PROXY}
+      - HTTPS_PROXY=${HTTPS_PROXY}
+      - NO_PROXY=${NO_PROXY}
     restart: always
+
+  litellm_postgres:
+    image: pgvector/pgvector:pg16
+    container_name: litellm_postgres
+    environment:
+      POSTGRES_HOST_AUTH_METHOD: md5
+      POSTGRES_USER: ${LITELLM_DB_USER:-}
+      POSTGRES_PASSWORD: ${LITELLM_DB_PASSWORD:-}
+      POSTGRES_DB: ${LITELLM_DB_NAME:-}
+    volumes:
+      - litellm_postgres_data:/var/lib/postgresql/data
+      - ./init_lite_db.sh:/docker-entrypoint-initdb.d/init_lite_db.sh
+    networks:
+      - r2r-network
+    ports:
+      - "5433:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${LITELLM_DB_USER:-} -d ${LITELLM_DB_NAME:-}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
 
   litellm:
     image: litellm/litellm:latest
     container_name: litellm
-    # platform: linux/x86_64
     ports:
       - "4000:4000"
     volumes:
       - ./config.yaml:/app/config.yaml
     environment:
-      - UI_USERNAME=${UI_USERNAME:-}
-      - UI_PASSWORD=${UI_PASSWORD:-}
-      - LITELLM_MASTER_KEY=${LITELLM_MASTER_KEY:-}
-      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
-      - HUGGING_FACE_API_KEY=${HUGGING_FACE_API_KEY:-}
-      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
-      - AZURE_AD_TOKEN=${AZURE_AD_TOKEN:-}
-      - AZURE_AD_TOKEN_PROVIDER=${AZURE_AD_TOKEN_PROVIDER:-}
-      - AZURE_OPENAI_API_KEY=${AZURE_OPENAI_API_KEY:-}
-      - AZURE_API_BASE=${AZURE_API_BASE:-}
-      - AZURE_API_VERSION=${AZURE_API_VERSION:-}
-      - GOOGLE_APPLICATION_CREDENTIALS=${GOOGLE_APPLICATION_CREDENTIALS:-}
-      - VERTEX_PROJECT=${VERTEX_PROJECT:-}
-      - VERTEX_LOCATION=${VERTEX_LOCATION:-}
-      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID:-}
-      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY:-}
-      - AWS_REGION_NAME=${AWS_REGION_NAME:-}
-      - GROQ_API_KEY=${GROQ_API_KEY:-}
-      - COHERE_API_KEY=${COHERE_API_KEY:-}
-      - ANYSCALE_API_KEY=${ANYSCALE_API_KEY:-}
-      - OLLAMA_API_BASE=http://ollama:11434
+      UI_USERNAME: ${UI_USERNAME:-}
+      UI_PASSWORD: ${UI_PASSWORD:-}
+
+      DB_USER: ${LITELLM_DB_USER:-}
+      DB_PASSWORD: ${LITELLM_DB_PASSWORD:-}
+      DB_HOST: ${LITELLM_DB_HOST:-litellm_postgres}
+      DB_PORT: 5433
+      DB_NAME: ${LITELLM_DB_NAME:-}
+      LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      HUGGING_FACE_API_KEY: ${HUGGING_FACE_API_KEY:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      AZURE_AD_TOKEN: ${AZURE_AD_TOKEN:-}
+      AZURE_AD_TOKEN_PROVIDER: ${AZURE_AD_TOKEN_PROVIDER:-}
+      AZURE_OPENAI_API_KEY: ${AZURE_OPENAI_API_KEY:-}
+      AZURE_API_BASE: ${AZURE_API_BASE:-}
+      AZURE_API_VERSION: ${AZURE_API_VERSION:-}
+      GOOGLE_APPLICATION_CREDENTIALS: ${GOOGLE_APPLICATION_CREDENTIALS:-}
+      VERTEX_PROJECT: ${VERTEX_PROJECT:-}
+      VERTEX_LOCATION: ${VERTEX_LOCATION:-}
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
+      AWS_REGION_NAME: ${AWS_REGION_NAME:-}
+      GROQ_API_KEY: ${GROQ_API_KEY:-}
+      COHERE_API_KEY: ${COHERE_API_KEY:-}
+      ANYSCALE_API_KEY: ${ANYSCALE_API_KEY:-}
+      OLLAMA_API_BASE: ${OLLAMA_API_BASE:-}
     networks:
       - r2r-network
-    restart: always
+    depends_on:
+      litellm_postgres:
+        condition: service_healthy
+    restart: unless-stopped
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.litellm.rule=Host(`litellm.${DOMAIN_NAME:-}`)"
+      - "traefik.http.routers.litellm.rule=Host(`litellm.${DOMAIN_NAME}`)"
       - "traefik.http.routers.litellm.entrypoints=websecure"
       - "traefik.http.routers.litellm.tls.certresolver=myresolver"
       - "traefik.http.services.litellm.loadbalancer.server.port=4000"
@@ -668,25 +717,14 @@ services:
       - r2r-network
     restart: always
 
-  tika:
-    image: apache/tika:latest
-    container_name: tika
-    command: ["-jar", "/tika-server-standard-2.9.0.jar", "-h", "0.0.0.0", "-p", "9998"]
-    ports:
-      - "9998:9998"
-    volumes:
-      - open_webui_data:/app/backend/data
-    networks:
-      - r2r-network
-
   prometheus:
     image: prom/prometheus:latest
     container_name: prometheus
     volumes:
-      - /home/admin/mikoshi/prometheus.yml:/etc/prometheus/prometheus.yml
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.prometheus.rule=Host(`prometheus.${DOMAIN_NAME:-}`)"
+      - "traefik.http.routers.prometheus.rule=Host(`prometheus.${DOMAIN_NAME}`)"
       - "traefik.http.routers.prometheus.entrypoints=websecure"
       - "traefik.http.routers.prometheus.tls.certresolver=myresolver"
       - "traefik.http.services.prometheus.loadbalancer.server.port=9090"
@@ -701,7 +739,7 @@ services:
       - GF_SECURITY_ADMIN_PASSWORD=admin
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.grafana.rule=Host(`grafana.${DOMAIN_NAME:-}`)"
+      - "traefik.http.routers.grafana.rule=Host(`grafana.${DOMAIN_NAME}`)"
       - "traefik.http.routers.grafana.entrypoints=websecure"
       - "traefik.http.routers.grafana.tls.certresolver=myresolver"
       - "traefik.http.services.grafana.loadbalancer.server.port=3000"
