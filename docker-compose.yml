@@ -472,9 +472,10 @@ services:
       - https_proxy=${https_proxy}
       - no_proxy=${no_proxy}
       - ENABLE_RAG_WEB_SEARCH=True
-      - RAG_WEB_SEARCH_ENGINE=searxng
+      - RAG_WEB_SEARCH_ENGINE="searxng"
       - RAG_WEB_SEARCH_RESULT_COUNT=3
       - RAG_WEB_SEARCH_CONCURRENT_REQUESTS=10
+      - NODE_OPTIONS=--max-old-space-size=4096
       - SEARXNG_QUERY_URL="http://searxng:8091/search?q=<query>"
     ports:
       - "8080:8080"
@@ -542,13 +543,17 @@ services:
       - "8091:8080"
     volumes:
       - ./searxng:/etc/searxng
+    networks:
+      r2r-network:
+        aliases:
+          - searxng
     restart: always
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.searxng.rule=Host(`search.${DOMAIN_NAME}`)"
       - "traefik.http.routers.searxng.entrypoints=websecure"
       - "traefik.http.routers.searxng.tls.certresolver=myresolver"
-      - "traefik.http.services.searxng.loadbalancer.server.port=8091"
+      - "traefik.http.services.searxng.loadbalancer.server.port=8080"
 
   litellm:
     image: litellm/litellm:latest

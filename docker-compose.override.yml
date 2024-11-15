@@ -1,48 +1,160 @@
-# services:
-#   ollama:
-#     deploy:
-#       resources:
-#         limits:
-#           cpus: "0.25"
-#           memory: 8g
-#         reservations:
-#           cpus: "0.125"
-#           memory: 4g
-#     environment:
-#       - OLLAMA_ENV=production
-#     # volumes:
-#     #   - ./ollama_data:/home/ollama/data
+services:
+  open-webui:
+    deploy:
+      resources:
+        limits:
+          cpus: '4.0'       # 4 ядра CPU
+          memory: 8G        # 8 GB оперативной памяти
+        reservations:
+          cpus: '2.0'       # Резервируем минимум 2 ядра CPU
+          memory: 6G        # Минимум 6 GB RAM
 
-#   open-webui:
-#     deploy:
-#       resources:
-#         limits:
-#           cpus: "0.25"
-#           memory: 8g
-#         reservations:
-#           cpus: "0.125"
-#           memory: 4g
-#     environment:
-#       - OPENWEBUI_ENV=production
-#       - WEBUI_SECRET_KEY=${R2R_SECRET_KEY}
-#       - OLLAMA_BASE_URL=http://ollama:11434
-#       - PIPELINES_BASE_URL=http://pipelines:9099
-#       - NODE_OPTIONS=--max-old-space-size=4096
-#       - ENABLE_RAG_WEB_SEARCH=True
-#       - RAG_WEB_SEARCH_ENGINE="searxng"
-#       - RAG_WEB_SEARCH_RESULT_COUNT=4
-#       - RAG_WEB_SEARCH_CONCURRENT_REQUESTS=12
-#       - VECTOR_DB=postgres
-#       - WEBUI_NAME="Mikoshi Network"
-#       # - CORS_ALLOW_ORIGIN="*"
-#       - RAG_EMBEDDING_ENGINE=ollama
-#       - RAG_EMBEDDING_MODEL=nomic-embed-text-v1.5
-#       - RAG_EMBEDDING_MODEL_TRUST_REMOTE_CODE="True"
-#       - SEARXNG_QUERY_URL="http://searxng:8888/search?q=<query>"
-#       # - http_proxy=http://Tky79m:cXXV9B@209.46.3.110:8000
-#       # - https_proxy=http://Tky79m:cXXV9B@209.46.3.110:8000
-#       # - no_proxy=.mit.edu,localhost,127.0.0.1,ollama,unstructured,pipelines,open-webui,litellm,searxng
-#     # volumes:
-#     #   - ./openwebui_data:/app/data
+  ollama:
+    deploy:
+      resources:
+        limits:
+          cpus: '4.0'       # 4 ядра CPU для Ollama
+          memory: 8G        # 8 GB оперативной памяти
+        reservations:
+          cpus: '2.0'       # Минимум 2 ядра CPU
+          memory: 6G        # Минимум 6 GB RAM
 
-#   # Другие сервисы аналогично
+  pipelines:
+    deploy:
+      resources:
+        limits:
+          cpus: '1.5'       # 1.5 ядра для сервисов pipelines
+          memory: 4G        # 4 GB RAM
+        reservations:
+          cpus: '0.5'       # Минимум 0.5 ядра
+          memory: 2G        # Занимаем минимум 2 GB
+
+  postgres:
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'       # 1 ядро CPU
+          memory: 2G        # 2 GB RAM
+        reservations:
+          cpus: '0.5'       # Минимум 0.5 ядра
+          memory: 1G        # 1 GB RAM
+
+  hatchet-postgres:
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'       # 0.5 CPU ядра
+          memory: 1G        # 1 GB RAM
+        reservations:
+          cpus: '0.25'      # Минимум 0.25 CPU
+          memory: 512M      # 512 MB
+
+  hatchet-rabbitmq:
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'       # 0.5 CPU ядра
+          memory: 1G        # 1 GB RAM
+        reservations:
+          cpus: '0.25'      # Минимум 0.25 ядра
+          memory: 512M      # 512 MB RAM
+
+  hatchet-engine:
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'       # 1 ядро для hatchet-engine
+          memory: 2G        # 2 GB оперативной памяти
+        reservations:
+          cpus: '0.5'       # Минимум 0.5 CPU
+          memory: 1G        # 1 GB RAM
+
+  hatchet-dashboard:
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'       # 0.5 CPU для dashboard
+          memory: 1G        # 1 GB RAM
+        reservations:
+          cpus: '0.25'      # Занимает минимум 0.25 CPU
+          memory: 512M      # 512 MB
+
+  unstructured:
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'       # 1 ядро для Unstructured
+          memory: 2G        # 2 GB RAM
+        reservations:
+          cpus: '0.5'       # Минимум 0.5 ядра
+          memory: 1G        # Минимум 1 GB RAM
+
+  traefik:
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'       # 0.5 CPU
+          memory: 1G        # 1 GB RAM
+        reservations:
+          cpus: '0.25'      # 0.25 CPU минимум
+          memory: 512M      # 512 MB
+
+  litellm:
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'       # 1 CPU для LiteLLM
+          memory: 2G        # 2 GB оперативной памяти
+        reservations:
+          cpus: '0.5'       # Минимум 0.5 CPU
+          memory: 1G        # Минимум 1 GB RAM
+
+  searxng:
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'        # Дадим контейнеру доступ к 2 ядрам CPU
+          memory: 2G         # Выделим 2 ГБ оперативной памяти
+        reservations:
+          cpus: '1.0'        # Минимум 1 ядро CPU
+          memory: 1G         # Минимум 1 ГБ RAM
+
+  grafana:
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'       # 0.5 ядра
+          memory: 1G        # Ограничение 1 GB
+        reservations:
+          cpus: '0.25'      # Минимум 0.25 CPU
+          memory: 512M      # Минимум 512 MB
+
+  prometheus:
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'       # 1 ядро CPU для Prometheus
+          memory: 2G        # 2 GB RAM
+        reservations:
+          cpus: '0.5'       # Минимум 0.5 CPU
+          memory: 1G        # 1 GB RAM
+
+  tika:
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'       # 0.5 CPU для tika
+          memory: 1G        # 1 GB RAM
+        reservations:
+          cpus: '0.25'      # Минимум 0.25 CPU
+          memory: 512M      # 512 MB RAM
+
+  watchtower:
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'       # 0.5 CPU
+          memory: 512M      # 512 MB RAM
+        reservations:
+          cpus: '0.25'      # Минимум 0.25 CPU
+          memory: 256M      # Минимум 256 МБ
