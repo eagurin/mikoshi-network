@@ -175,3 +175,7 @@ cython_debug/
 
 .DS_Store                                                                                                                                100% 6148   273.8KB/s   00:00    
 .idea/
+
+data/
+openwebui/
+.vscode/

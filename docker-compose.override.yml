@@ -1,0 +1,48 @@
+# services:
+#   ollama:
+#     deploy:
+#       resources:
+#         limits:
+#           cpus: "0.25"
+#           memory: 8g
+#         reservations:
+#           cpus: "0.125"
+#           memory: 4g
+#     environment:
+#       - OLLAMA_ENV=production
+#     # volumes:
+#     #   - ./ollama_data:/home/ollama/data
+
+#   open-webui:
+#     deploy:
+#       resources:
+#         limits:
+#           cpus: "0.25"
+#           memory: 8g
+#         reservations:
+#           cpus: "0.125"
+#           memory: 4g
+#     environment:
+#       - OPENWEBUI_ENV=production
+#       - WEBUI_SECRET_KEY=${R2R_SECRET_KEY}
+#       - OLLAMA_BASE_URL=http://ollama:11434
+#       - PIPELINES_BASE_URL=http://pipelines:9099
+#       - NODE_OPTIONS=--max-old-space-size=4096
+#       - ENABLE_RAG_WEB_SEARCH=True
+#       - RAG_WEB_SEARCH_ENGINE="searxng"
+#       - RAG_WEB_SEARCH_RESULT_COUNT=4
+#       - RAG_WEB_SEARCH_CONCURRENT_REQUESTS=12
+#       - VECTOR_DB=postgres
+#       - WEBUI_NAME="Mikoshi Network"
+#       # - CORS_ALLOW_ORIGIN="*"
+#       - RAG_EMBEDDING_ENGINE=ollama
+#       - RAG_EMBEDDING_MODEL=nomic-embed-text-v1.5
+#       - RAG_EMBEDDING_MODEL_TRUST_REMOTE_CODE="True"
+#       - SEARXNG_QUERY_URL="http://searxng:8888/search?q=<query>"
+#       # - http_proxy=http://Tky79m:cXXV9B@209.46.3.110:8000
+#       # - https_proxy=http://Tky79m:cXXV9B@209.46.3.110:8000
+#       # - no_proxy=.mit.edu,localhost,127.0.0.1,ollama,unstructured,pipelines,open-webui,litellm,searxng
+#     # volumes:
+#     #   - ./openwebui_data:/app/data
+
+#   # Другие сервисы аналогично

@@ -1,0 +1,37 @@
+entryPoints:
+  web:
+    address: ":80"
+  websecure:
+    address: ":443"
+
+serversTransport:
+  insecureSkipVerify: true
+
+certificatesResolvers:
+  myresolver:
+    acme:
+      email: "${ACME_EMAIL}"
+      storage: /letsencrypt/acme.json
+      httpChallenge:
+        entryPoint: web
+
+providers:
+  docker:
+    endpoint: "unix:///var/run/docker.sock"
+    exposedByDefault: false
+  file:
+    filename: /dynamic.yml
+    watch: true
+
+api:
+  dashboard: true
+
+log:
+  level: INFO
+
+tls:
+  options:
+    default:
+      sniStrict: false
+
+accessLog: {}

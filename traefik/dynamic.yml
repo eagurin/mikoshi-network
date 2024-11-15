@@ -1,0 +1,9 @@
+http:
+  middlewares:
+    secureHeaders:
+      headers:
+        frameDeny: true
+        sslRedirect: true
+        contentTypeNosniff: true
+        browserXssFilter: true
+        contentSecurityPolicy: "default-src 'self'"

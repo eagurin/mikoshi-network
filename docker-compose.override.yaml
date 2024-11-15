@@ -1,4 +1,0 @@
-services:
-  r2r:
-    ports:
-      - "8082:8080"

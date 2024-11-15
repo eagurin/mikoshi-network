@@ -11,29 +11,28 @@ scrape_configs:
   - job_name: 'open-webui'
     metrics_path: '/metrics'
     static_configs:
-      - targets: ['open-webui:8080']
+      - targets: ['open-webui:8001']
 
   - job_name: 'r2r'
     metrics_path: '/metrics'
     static_configs:
-      - targets: ['localhost:7272']
+      - targets: ['r2r:7272']
 
   - job_name: 'postgres'
     metrics_path: '/metrics'
     static_configs:
-      - targets: ['postgres-exporter:9187']
+      - targets: ['postgres:9187']
 
   - job_name: 'traefik'
     metrics_path: '/metrics'
     static_configs:
-      - targets: ['localhost:8082']
+      - targets: ['traefik:8082']
 
-  - job_name: 'cadvisor'
-    metrics_path: '/metrics'
-    static_configs:
-      - targets: ['cadvisor:8088']
+  # - job_name: 'pipelines'
+  #   metrics_path: '/metrics'
+  #   static_configs:
+  #     - targets: ['pipelines:9099']
 
-  - job_name: 'node'
-    metrics_path: '/metrics'
+  - job_name: 'prometheus'
     static_configs:
-      - targets: ['node-exporter:9100']
+      - targets: ['localhost:9090']

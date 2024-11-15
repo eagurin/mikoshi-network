@@ -1,47 +1,60 @@
-# Этап 1: Используем минимальный базовый образ Python для сборки
-FROM python:3.11-slim AS builder
+FROM python:3.12-slim AS builder
 
-# Устанавливаем рабочую директорию
-WORKDIR /app
-
-# Устанавливаем необходимые системные пакеты
+# Install system dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential \
-    && rm -rf /var/lib/apt/lists/*
+    gcc g++ musl-dev curl libffi-dev gfortran libopenblas-dev \
+    poppler-utils \
+    && apt-get clean && rm -rf /var/lib/apt/lists/* \
+    && curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
 
-# Копируем только requirements.txt для установки зависимостей (используем кеширование Docker)
-COPY requirements.txt .
+RUN pip install --no-cache-dir poetry
 
-# Обновляем pip и устанавливаем зависимости
-RUN pip install --no-cache-dir --upgrade pip
-# RUN python3 -m pip install --no-cache-dir -r /app/requirements.txt
 
-# Копируем остальной исходный код приложения
-COPY . .
+# Add Rust to PATH
+ENV PATH="/root/.cargo/bin:${PATH}"
 
-# Этап 2: Создаем финальный образ с минимальным размером
-FROM python:3.11-slim
+RUN mkdir -p /app/py
+WORKDIR /app/py
+COPY pyproject.toml /app/py/pyproject.toml
 
-# Устанавливаем рабочую директорию
+# Install dependencies
+RUN poetry config virtualenvs.create false \
+    && poetry install --extras "core ingestion-bundle" --no-dev --no-root \
+    && pip install --no-cache-dir gunicorn uvicorn
+
+# Create the final image
+FROM python:3.12-slim
+
+# Install runtime dependencies
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends curl poppler-utils \
+    && apt-get clean && rm -rf /var/lib/apt/lists/*
+
+# Add poppler to PATH
+ENV PATH="/usr/bin:${PATH}"
+
+# Debugging steps
+RUN echo "PATH: $PATH"
+RUN which pdfinfo
+RUN pdfinfo -v
+
 WORKDIR /app
 
-# Копируем установленное приложение из этапа сборки
-COPY --from=builder /app /app
+COPY --from=builder /usr/local/lib/python3.12/site-packages /usr/local/lib/python3.12/site-packages
+COPY --from=builder /usr/local/bin /usr/local/bin
 
-# Создаем пользователя для работы приложения
-RUN useradd -ms /bin/bash appuser
-USER appuser
+# Expose the port and set environment variables
+ARG R2R_PORT=8000 R2R_HOST=0.0.0.0
+ENV R2R_PORT=$R2R_PORT R2R_HOST=$R2R_HOST
+EXPOSE $R2R_PORT
 
-# Открываем необходимый порт
-EXPOSE 9099
+COPY . /app
+# Copy the application and config
+COPY core /app/core
+COPY r2r /app/r2r
+COPY shared /app/shared
+COPY r2r.toml /app/r2r.toml
+COPY pyproject.toml /app/pyproject.toml
 
-# RUN apt-get install python3.11-venv
-# RUN python3 -m venv venv
-# RUN . venv/bin/activate
-# RUN pip install --upgrade pip
-# RUN pip install  --upgrade  -r requirements.txt
-RUN pip install --upgrade 'r2r[core,ingestion-bundle,hatchet]'
-# RUN r2r serve --config-name=full_local_llm --full --docker --project-name=mikoshi-network
-
-# Команда запуска приложения
-CMD ["python3", "-m", "r2r", "serve", "--config-name=local_llm", "--project-name=r2r_default"]
+# Run the application
+CMD ["sh", "-c", "uvicorn core.main.app_entry:app --host $R2R_HOST --port $R2R_PORT"]
