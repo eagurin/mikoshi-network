@@ -1,7 +1,13 @@
-from typing import List, Dict, Any, Optional
-from schemas import OpenAIChatMessage
+"""
+title: R2R Native Agent Pipeline
+author: evgeny a.
+author_url: https://github.com/open-webui
+funding_url: https://github.com/open-webui
+version: 0.0.0.001a
+requirements: r2r
+"""
+from typing import Dict, Any
 import asyncio
-import json
 import logging
 from r2r import R2RClient
 
@@ -13,11 +19,8 @@ class Pipeline:
         self.name = "R2R Agent Pipeline"
 
     def pipelines(self):
-        """
-        Метод pipelines должен быть вызываемым и возвращать список связанных pipelines.
-        Если нет связанных pipelines, можно вернуть пустой список или другую подходящую структуру.
-        """
-        return []  # Здесь можно указать имена связанных pipelines, если они есть
+        # Возвращаем список доступных pipelines или пустой список, если не применимо
+        return []
 
     async def run(
         self,
@@ -72,8 +75,13 @@ class Pipeline:
             if rag_generation_config.get("stream", False):
                 # Обработка потокового ответа
                 content = ""
-                async for chunk in response:
-                    content += chunk
+                if isinstance(response, str):
+                    # Если response уже содержит ответ в виде строки
+                    content = response
+                else:
+                    # Если response является генератором или итератором
+                    async for chunk in response:
+                        content += chunk
                 return {"response": content}
             else:
                 # Обработка стандартного ответа

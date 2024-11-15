@@ -518,7 +518,7 @@ services:
       - "9099:9099"
     environment:
       - PIPELINES_REQUIREMENTS_PATH=./requirements.txt
-      # - PIPELINES_URLS=https://github.com/eagurin/mikoshi-network/blob/main/pipelines/open_webu_pipeline.py
+      - PIPELINES_URLS=https://github.com/eagurin/mikoshi-network/blob/main/pipelines/r2r_agent_native_pipeline.py
       - HTTP_PROXY=${HTTP_PROXY:-}
       - HTTPS_PROXY=${HTTPS_PROXY:-}
       - NO_PROXY=${NO_PROXY:-}
