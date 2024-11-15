@@ -477,6 +477,9 @@ services:
       - RAG_WEB_SEARCH_CONCURRENT_REQUESTS=10
       - NODE_OPTIONS=--max-old-space-size=4096
       - SEARXNG_QUERY_URL="http://searxng:8091/search?q=<query>"
+      - TTS_VOICE=ru-RU-DmitryNeural
+      - TTS_API_BASE_URL=http://openedai-speech:8000/v1
+      - TTS_API_KEY=${OPENAI_API_KEY:-}
     ports:
       - "8080:8080"
       - "8001:8001"
@@ -484,6 +487,7 @@ services:
       - ollama
       - pipelines
       - tika
+      - openedai-speech
     extra_hosts:
       - host.docker.internal:host-gateway
     volumes:
@@ -535,6 +539,21 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
+
+  openedai-speech:
+    image: ghcr.io/matatonic/openedai-speech-min:latest
+    container_name: openedai-speech
+    environment:
+      - TTS_HOME=/app/voices
+      - HF_HOME=/app/voices
+    volumes:
+      - ./openedai-speech/voices:/app/voices  # Монтируйте директорию с голосами
+      - ./openedai-speech/speech.env:/app/speech.env  # Монтируйте файл окружения
+    ports:
+      - "8000:8000"  # Убедитесь, что порт соответствует настройкам
+    networks:
+      - r2r-network
+    restart: unless-stopped
 
   searxng:
     image: searxng/searxng:latest
