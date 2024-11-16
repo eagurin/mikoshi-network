@@ -1,6 +1,6 @@
 """
 title: R2R Native Agent Pipeline
-author: evgeny a.
+author: Evgeny A.
 author_url: https://github.com/open-webui
 funding_url: https://github.com/open-webui
 version: 0.0.0.001a
@@ -16,6 +16,8 @@ import json
 from pydantic import BaseModel, Field
 from r2r import R2RClient
 
+# Настройка логирования
+logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
@@ -26,7 +28,7 @@ class Pipeline:
             description="Base API URL",
         )
         TIMEOUT: int = Field(
-            default=180,
+            default=180,  # Увеличен таймаут
             description="Request timeout in seconds",
         )
         summarizer_model_id: str = Field(
@@ -57,104 +59,22 @@ class Pipeline:
         )
 
     def __init__(self):
-        self.type = "pipe"  # Указываем, что это манифолдный pipeline
+        self.type = "pipe"
         self.name = "R2R Agent Pipeline"
-        # Load configuration from environment variables or use default values
         self.valves = self.Valves(
             API_BASE_URL=os.getenv(
                 "API_BASE_URL", "https://api.durka.dndstudio.ru"
             ),
-            TIMEOUT=int(os.getenv("TIMEOUT", "60")),
+            TIMEOUT=int(os.getenv("TIMEOUT", "180")),
             summarizer_model_id=os.getenv("SUMMARIZER_MODEL_ID", "gpt-4o"),
         )
         self.user_valves = self.UserValves()
-        # Disable SSL verification by setting verify=False here
         self.client = httpx.AsyncClient(
             timeout=self.valves.TIMEOUT, verify=False
         )
 
     def pipelines(self) -> List[str]:
-        """
-        Метод pipelines должен возвращать список связанных pipelines.
-        Если нет связанных pipelines, верните пустой список.
-        """
         return []
-
-    async def run(
-        self,
-        body: Dict[str, Any],
-        websocket_conn=None,
-        request=None,
-    ) -> Union[str, Dict[str, Any], AsyncGenerator[str, None]]:
-        client = R2RClient(
-            "https://api.durka.dndstudio.ru"
-        )  # URL вашего R2R сервера
-        messages = body.get("messages", [])
-
-        # Формируем историю сообщений для агента R2R
-        conversation = [
-            {"role": message["role"], "content": message["content"]}
-            for message in messages
-        ]
-
-        # Настраиваем параметры генерации
-        rag_generation_config = {
-            "max_tokens": 300,
-            "stream": True,  # Установите True для потоковой генерации
-        }
-
-        try:
-            # Проверяем, есть ли асинхронный метод в R2RClient
-            if hasattr(client, "agent_async") and asyncio.iscoroutinefunction(
-                client.agent_async
-            ):
-                response = await client.agent_async(
-                    messages=conversation,
-                    vector_search_settings={"search_limit": 5, "filters": {}},
-                    kg_search_settings={"use_kg_search": True},
-                    rag_generation_config=rag_generation_config,
-                )
-            else:
-                # Используем asyncio.to_thread для вызова синхронного метода
-                response = await asyncio.to_thread(
-                    client.agent,
-                    messages=conversation,
-                    vector_search_settings={"search_limit": 5, "filters": {}},
-                    kg_search_settings={"use_kg_search": True},
-                    rag_generation_config=rag_generation_config,
-                )
-
-            if rag_generation_config.get("stream", False):
-                # Обработка потокового ответа
-                content = ""
-                if isinstance(response, str):
-                    # Если response уже содержит ответ в виде строки
-                    content = response
-                else:
-                    # Если response является генератором или итератором
-                    async for chunk in response:
-                        content += chunk
-                return {"response": content}
-            else:
-                # Обработка стандартного ответа
-                assistant_response = response.get("results", [])
-                # Извлекаем последнее сообщение от ассистента
-                assistant_messages = [
-                    msg
-                    for msg in assistant_response
-                    if msg.get("role") == "assistant"
-                ]
-                if assistant_messages:
-                    content = assistant_messages[-1].get("content", "")
-                    return {"response": content}
-                else:
-                    return {
-                        "response": "Извините, не удалось получить ответ от агента R2R."
-                    }
-
-        except Exception as e:
-            logger.exception("Ошибка при обращении к агенту R2R.")
-            return {"response": f"Ошибка при обращении к агенту R2R: {str(e)}"}
 
     async def pipe(
         self,
@@ -181,9 +101,10 @@ class Pipeline:
             messages = body.get("messages", [])
             if not messages:
                 raise ValueError("Empty 'messages' list in 'body'.")
+
             memory_limit = self.user_valves.memory_limit
             past_messages = messages[-memory_limit:]
-            # Extract the latest user message
+            # Извлекаем последнее сообщение от пользователя
             prompt = ""
             for message in reversed(past_messages):
                 if message.get("role") == "user" and "content" in message:
@@ -199,17 +120,14 @@ class Pipeline:
                                 item_content = item.get("content", "")
                                 if isinstance(item_content, str):
                                     content_list.append(item_content)
-                                else:
-                                    continue
                         prompt = " ".join(content_list).strip()
                     elif isinstance(content, dict):
                         prompt = content.get("content", "").strip()
-                    else:
-                        continue
                     if prompt:
-                        break  # Exit loop if prompt is found
+                        break  # Выходим из цикла, если нашли prompt
             if not prompt:
                 raise ValueError("Prompt cannot be empty!")
+
             API_BASE_URL = self.valves.API_BASE_URL
             summarizer_model_id = self.valves.summarizer_model_id
             endpoint = f"{API_BASE_URL}/v2/rag"
@@ -239,12 +157,12 @@ class Pipeline:
                     "temperature": self.user_valves.temperature,
                     "top_p": self.user_valves.top_p,
                     "max_tokens_to_sample": self.user_valves.max_tokens,
-                    "stream": True,  # Ensure streaming is enabled
+                    "stream": True,  # Убедитесь, что потоковая генерация включена
                 },
                 "task_prompt_override": None,
                 "include_title_if_available": False,
             }
-            print(
+            logger.debug(
                 f"Payload: {json.dumps(payload, indent=2, ensure_ascii=False)}"
             )
             await self.emit_status(
@@ -265,11 +183,11 @@ class Pipeline:
                     )
                 async for line in streamed_response.aiter_lines():
                     if line:
-                        print(f"Streamed line: {line}")
-                        # Assume line is JSON, try to parse
+                        logger.debug(f"Streamed line: {line}")
+                        # Предполагаем, что строка - это JSON, пытаемся его разобрать
                         try:
                             data = json.loads(line)
-                            # Extract content from data
+                            # Извлекаем контент из данных
                             content = (
                                 data.get("choices", [{}])[0]
                                 .get("delta", {})
@@ -278,16 +196,21 @@ class Pipeline:
                             if content:
                                 yield content
                         except json.JSONDecodeError:
-                            # If not JSON, yield the raw line
+                            # Если не JSON, возвращаем саму строку
                             yield line
             await self.emit_status(
                 __event_emitter__,
                 "Completed streaming data to user.",
                 done=True,
             )
+        except httpx.ReadTimeout as e:
+            error_message = f"ReadTimeout during streaming: {e}"
+            logger.error(error_message)
+            await self.emit_status(__event_emitter__, error_message, done=True)
+            raise
         except Exception as e:
             error_message = f"Error during streaming: {e}"
-            print(error_message)
+            logger.exception(error_message)
             await self.emit_status(__event_emitter__, error_message, done=True)
             raise
 
@@ -303,9 +226,10 @@ class Pipeline:
             messages = body.get("messages", [])
             if not messages:
                 raise ValueError("Empty 'messages' list in 'body'.")
+
             memory_limit = self.user_valves.memory_limit
             past_messages = messages[-memory_limit:]
-            # Extract the latest user message
+            # Извлекаем последнее сообщение от пользователя
             prompt = ""
             for message in reversed(past_messages):
                 if message.get("role") == "user" and "content" in message:
@@ -321,17 +245,14 @@ class Pipeline:
                                 item_content = item.get("content", "")
                                 if isinstance(item_content, str):
                                     content_list.append(item_content)
-                                else:
-                                    continue
                         prompt = " ".join(content_list).strip()
                     elif isinstance(content, dict):
                         prompt = content.get("content", "").strip()
-                    else:
-                        continue
                     if prompt:
-                        break  # Exit loop if prompt is found
+                        break  # Выходим из цикла, если нашли prompt
             if not prompt:
                 raise ValueError("Prompt cannot be empty!")
+
             API_BASE_URL = self.valves.API_BASE_URL
             summarizer_model_id = self.valves.summarizer_model_id
             endpoint = f"{API_BASE_URL}/v2/rag"
@@ -366,7 +287,7 @@ class Pipeline:
                 "task_prompt_override": None,
                 "include_title_if_available": False,
             }
-            print(
+            logger.debug(
                 f"Payload: {json.dumps(payload, indent=2, ensure_ascii=False)}"
             )
             await self.emit_status(
@@ -388,7 +309,7 @@ class Pipeline:
                 done=False,
             )
             result = response.json()
-            print(
+            logger.debug(
                 f"API Response: {json.dumps(result, indent=2, ensure_ascii=False)}"
             )
             completion = result.get("results", {}).get("completion", {})
@@ -396,7 +317,7 @@ class Pipeline:
             if choices and "message" in choices[0]:
                 content = choices[0].get("message", {}).get("content", "")
                 if isinstance(content, list):
-                    # Process each item in the list
+                    # Обрабатываем каждый элемент в списке
                     content_list = []
                     for item in content:
                         if isinstance(item, str):
@@ -405,8 +326,6 @@ class Pipeline:
                             item_content = item.get("content", "")
                             if isinstance(item_content, str):
                                 content_list.append(item_content)
-                            else:
-                                continue
                     content = " ".join(content_list)
                 elif isinstance(content, dict):
                     content = content.get("content", "")
@@ -430,22 +349,16 @@ class Pipeline:
                     done=True,
                 )
                 return "No response from the assistant."
-        except Exception as e:
-            error_message = f"Error during non-streaming: {e}"
-            print(error_message)
+        except httpx.ReadTimeout as e:
+            error_message = f"ReadTimeout during non-streaming: {e}"
+            logger.error(error_message)
             await self.emit_status(__event_emitter__, error_message, done=True)
             raise
-
-    async def pipe(
-        self,
-        body: dict,
-        __event_emitter__: Optional[Callable[[dict], Any]] = None,
-    ) -> Union[str, AsyncGenerator[str, None]]:
-        stream = body.get("kwargs", {}).get("stream", False)
-        if stream:
-            return self.pipe_stream(body, __event_emitter__)
-        else:
-            return await self.pipe_non_stream(body, __event_emitter__)
+        except Exception as e:
+            error_message = f"Error during non-streaming: {e}"
+            logger.exception(error_message)
+            await self.emit_status(__event_emitter__, error_message, done=True)
+            raise
 
     async def emit_status(
         self,
@@ -470,54 +383,64 @@ class Pipeline:
             )
 
 
-# Example usage of Pipeline with event handling
-async def example_event_emitter(event: dict):
-    event_type = event.get("type")
-    data = event.get("data", {})
-    if event_type == "status":
-        description = data.get("description", "")
-        done = data.get("done", False)
-        print(f"[STATUS] {description} (Done: {done})")
-    elif event_type == "message":
-        content = data.get("content", "")
-        print(f"[MESSAGE] {content}")
+# # Пример использования Pipeline с обработкой событий
+# async def example_event_emitter(event: dict):
+#     event_type = event.get("type")
+#     data = event.get("data", {})
+#     if event_type == "status":
+#         description = data.get("description", "")
+#         done = data.get("done", False)
+#         print(f"[STATUS] {description} (Done: {done})")
+#     elif event_type == "message":
+#         content = data.get("content", "")
+#         print(f"[MESSAGE] {content}")
 
 
-async def main():
-    pipeline = Pipeline()
-    request_body_stream = {
-        "messages": [
-            {
-                "role": "user",
-                "content": "Hello, can you tell me about Aristotle?",
-            }
-        ],
-        "kwargs": {"stream": True},
-    }
-    request_body_non_stream = {
-        "messages": [
-            {
-                "role": "user",
-                "content": "Hello, can you tell me about Aristotle?",
-            }
-        ],
-        "kwargs": {"stream": False},
-    }
-    print("=== Streaming Response ===")
-    response_stream = await pipeline.pipe(
-        request_body_stream, example_event_emitter
-    )
-    if hasattr(response_stream, "__aiter__"):
-        async for response in response_stream:
-            print("Streamed Response:", response)
-    else:
-        print("Unexpected response type for streaming.")
-    print("\n=== Non-Streaming Response ===")
-    response = await pipeline.pipe(
-        request_body_non_stream, example_event_emitter
-    )
-    print("Final Response:", response)
+# async def main():
+#     pipeline = Pipeline()
+#     request_body_stream = {
+#         "messages": [
+#             {
+#                 "role": "user",
+#                 "content": "Hello, can you tell me about Aristotle?",
+#             }
+#         ],
+#         "kwargs": {"stream": True},
+#     }
+#     request_body_non_stream = {
+#         "messages": [
+#             {
+#                 "role": "user",
+#                 "content": "Hello, can you tell me about Aristotle?",
+#             }
+#         ],
+#         "kwargs": {"stream": False},
+#     }
+
+#     # Обработка потокового ответа
+#     print("=== Streaming Response ===")
+#     try:
+#         response_stream = await pipeline.pipe(
+#             request_body_stream, example_event_emitter
+#         )
+#         if hasattr(response_stream, "__aiter__"):
+#             async for response in response_stream:
+#                 print("Streamed Response:", response)
+#         else:
+#             print("Unexpected response type for streaming.")
+#     except Exception as e:
+#         print(f"Error during streaming: {e}")
+
+#     # Обработка непотокового ответа
+#     print("\n=== Non-Streaming Response ===")
+#     try:
+#         response = await pipeline.pipe(
+#             request_body_non_stream, example_event_emitter
+#         )
+#         print("Final Response:", response)
+#     except Exception as e:
+#         print(f"Error during non-streaming: {e}")
 
 
-if __name__ == "__main__":
-    asyncio.run(main())
+# if __name__ == "__main__":
+#     asyncio.run(main())
