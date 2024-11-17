@@ -72,8 +72,6 @@
 - **Prometheus**: https://prometheus.mikoshi.company
 - **Grafana**: https://grafana.mikoshi.company
 
-# ![mikoshi](https://mikoshi.company/cache/image/generations/cd5e8080-de9f-4523-8097-e47ec5193047.png)
-
 Убедитесь, что DNS-записи для этих доменов правильно настроены и указывают на ваш сервер.
 
 ## Примечания
