@@ -1,6 +1,6 @@
-# Mikoshi Network
+# Mikoshi
 
-![mikoshi](https://mikoshi.company/cache/image/generations/cd5e8080-de9f-4523-8097-e47ec5193047.png)
+![image](https://github.com/user-attachments/assets/2a9f0874-b074-4c4a-a484-693024d0bc57)
 
 ## Описание
 
@@ -71,6 +71,8 @@
 - **Ollama API**: https://ollama.mikoshi.company
 - **Prometheus**: https://prometheus.mikoshi.company
 - **Grafana**: https://grafana.mikoshi.company
+
+# ![mikoshi](https://mikoshi.company/cache/image/generations/cd5e8080-de9f-4523-8097-e47ec5193047.png)
 
 Убедитесь, что DNS-записи для этих доменов правильно настроены и указывают на ваш сервер.
 
