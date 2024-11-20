@@ -49,7 +49,7 @@ class RetryTransport(httpx.AsyncBaseTransport):
                     raise last_exception
 
 
-class Pipeline:
+class Pipe:
     class Valves(BaseModel):
         API_BASE_URL: str = Field(
             default="http://90.156.254.145:7272",
@@ -87,7 +87,7 @@ class Pipeline:
         )
 
     def __init__(self):
-        self.type = "pipe"
+        self.type = "filter"
         self.name = "R2R Agent Pipeline"
         self.valves = self.Valves(
             API_BASE_URL=os.getenv(

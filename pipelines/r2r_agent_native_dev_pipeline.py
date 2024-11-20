@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 class Pipeline:
     class Valves(BaseModel):
         API_BASE_URL: str = Field(
-            default="https://api.durka.dndstudio.ru",
+            default="http://90.156.254.145:7272",
             description="Base API URL",
         )
         TIMEOUT: int = Field(
@@ -63,10 +63,10 @@ class Pipeline:
         self.name = "R2R Agent Pipeline"
         self.valves = self.Valves(
             API_BASE_URL=os.getenv(
-                "API_BASE_URL", "https://api.durka.dndstudio.ru"
+                "API_BASE_URL", "http://90.156.254.145:7272"
             ),
             TIMEOUT=int(os.getenv("TIMEOUT", "180")),
-            summarizer_model_id=os.getenv("SUMMARIZER_MODEL_ID", "gpt-4o"),
+            summarizer_model_id=os.getenv("SUMMARIZER_MODEL_ID", "gpt-4o-mini"),
         )
         self.user_valves = self.UserValves()
         self.client = httpx.AsyncClient(

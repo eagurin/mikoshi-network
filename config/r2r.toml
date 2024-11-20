@@ -1,3 +1,13 @@
+[database]
+provider = "postgres"
+
+user = "postgres"
+password = "postgres"
+host = "postgres"
+port = "5432"
+db_name = "postgres"
+your_project_name = "collection"
+
 [ingestion]
 provider = "unstructured_local"
 strategy = "auto"

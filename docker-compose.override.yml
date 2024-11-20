@@ -3,11 +3,11 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '4.0'       # 4 ядра CPU
+          cpus: '2.0'       # 4 ядра CPU
           memory: 8G        # 8 GB оперативной памяти
         reservations:
-          cpus: '2.0'       # Резервируем минимум 2 ядра CPU
-          memory: 6G        # Минимум 6 GB RAM
+          cpus: '4.0'       # Резервируем минимум 2 ядра CPU
+          memory: 4G        # Минимум 6 GB RAM
 
   ollama:
     deploy:
@@ -17,59 +17,65 @@ services:
           memory: 8G        # 8 GB оперативной памяти
         reservations:
           cpus: '2.0'       # Минимум 2 ядра CPU
-          memory: 6G        # Минимум 6 GB RAM
+          memory: 4G        # Минимум 6 GB RAM
 
-  pipelines:
-    deploy:
-      resources:
-        limits:
-          cpus: '1.5'       # 1.5 ядра для сервисов pipelines
-          memory: 4G        # 4 GB RAM
-        reservations:
-          cpus: '0.5'       # Минимум 0.5 ядра
-          memory: 2G        # Занимаем минимум 2 GB
+  # pipelines:
+  #   deploy:
+  #     resources:
+  #       limits:
+  #         cpus: '1.5'       # 1.5 ядра для сервисов pipelines
+  #         memory: 4G        # 4 GB RAM
+  #       reservations:
+  #         cpus: '0.5'       # Минимум 0.5 ядра
+  #         memory: 2G        # Занимаем минимум 2 GB
 
-  postgres:
-    deploy:
-      resources:
-        limits:
-          cpus: '1.0'       # 1 ядро CPU
-          memory: 2G        # 2 GB RAM
-        reservations:
-          cpus: '0.5'       # Минимум 0.5 ядра
-          memory: 1G        # 1 GB RAM
+  # postgres:
+  #   deploy:
+  #     resources:
+  #       limits:
+  #         cpus: '1.0'       # 1 ядро CPU
+  #         memory: 2G        # 2 GB RAM
+  #       reservations:
+  #         cpus: '0.5'       # Минимум 0.5 ядра
+  #         memory: 1G        # 1 GB RAM
 
-  hatchet-postgres:
-    deploy:
-      resources:
-        limits:
-          cpus: '0.5'       # 0.5 CPU ядра
-          memory: 1G        # 1 GB RAM
-        reservations:
-          cpus: '0.25'      # Минимум 0.25 CPU
-          memory: 512M      # 512 MB
+  # hatchet-postgres:
+  #   deploy:
+  #     resources:
+  #       limits:
+  #         cpus: '0.5'       # 0.5 CPU ядра
+  #         memory: 1G        # 1 GB RAM
+  #       reservations:
+  #         cpus: '0.25'      # Минимум 0.25 CPU
+  #         memory: 512M      # 512 MB
 
-  hatchet-rabbitmq:
-    deploy:
-      resources:
-        limits:
-          cpus: '0.5'       # 0.5 CPU ядра
-          memory: 1G        # 1 GB RAM
-        reservations:
-          cpus: '0.25'      # Минимум 0.25 ядра
-          memory: 512M      # 512 MB RAM
+  # hatchet-rabbitmq:
+  #   deploy:
+  #     resources:
+  #       limits:
+  #         cpus: '0.5'       # 0.5 CPU ядра
+  #         memory: 1G        # 1 GB RAM
+  #       reservations:
+  #         cpus: '0.25'      # Минимум 0.25 ядра
+  #         memory: 512M      # 512 MB RAM
 
-  hatchet-engine:
-    deploy:
-      resources:
-        limits:
-          cpus: '1.0'       # 1 ядро для hatchet-engine
-          memory: 2G        # 2 GB оперативной памяти
-        reservations:
-          cpus: '0.5'       # Минимум 0.5 CPU
-          memory: 1G        # 1 GB RAM
+  # hatchet-engine:
+  #   deploy:
+  #     resources:
+  #       limits:
+  #         cpus: '1.0'       # 1 ядро для hatchet-engine
+  #         memory: 2G        # 2 GB оперативной памяти
+  #       reservations:
+  #         cpus: '0.5'       # Минимум 0.5 CPU
+  #         memory: 1G        # 1 GB RAM
 
   hatchet-dashboard:
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.hatchet-dashboard.rule=Host(`hatchet.${DOMAIN_NAME}`)"
+      - "traefik.http.routers.hatchet-dashboard.entrypoints=websecure"
+      - "traefik.http.routers.hatchet-dashboard.tls.certresolver=myresolver"
+      - "traefik.http.services.hatchet-dashboard.loadbalancer.server.port=80"
     deploy:
       resources:
         limits:
@@ -79,82 +85,193 @@ services:
           cpus: '0.25'      # Занимает минимум 0.25 CPU
           memory: 512M      # 512 MB
 
-  unstructured:
-    deploy:
-      resources:
-        limits:
-          cpus: '1.0'       # 1 ядро для Unstructured
-          memory: 2G        # 2 GB RAM
-        reservations:
-          cpus: '0.5'       # Минимум 0.5 ядра
-          memory: 1G        # Минимум 1 GB RAM
+  # unstructured:
+  #   deploy:
+  #     resources:
+  #       limits:
+  #         cpus: '1.0'       # 1 ядро для Unstructured
+  #         memory: 2G        # 2 GB RAM
+  #       reservations:
+  #         cpus: '0.5'       # Минимум 0.5 ядра
+  #         memory: 1G        # Минимум 1 GB RAM
 
-  traefik:
-    deploy:
-      resources:
-        limits:
-          cpus: '0.5'       # 0.5 CPU
-          memory: 1G        # 1 GB RAM
-        reservations:
-          cpus: '0.25'      # 0.25 CPU минимум
-          memory: 512M      # 512 MB
+  # r2r:
+    # image: ragtoriches/prod:latest
+    # build:
+    #   context: .
+    #   dockerfile: Dockerfile
+    #   args:
+    #     PORT: ${R2R_PORT:-${PORT:-7272}} # Eventually get rid of PORT, but for now keep it for backwards compatibility
+    #     R2R_PORT: ${R2R_PORT:-${PORT:-7272}}
+    #     HOST: ${R2R_HOST:-${HOST:-0.0.0.0}} # Eventually get rid of HOST, but for now keep it for backwards compatibility
+    #     R2R_HOST: ${R2R_HOST:-${HOST:-0.0.0.0}}
+    # ports:
+    #   - "${R2R_PORT:-7272}:${R2R_PORT:-7272}"
+    # environment:
+    #   - HTTP_PROXY=${HTTP_PROXY:-}
+    #   - HTTPS_PROXY=${HTTPS_PROXY:-}
+    #   - NO_PROXY=${NO_PROXY:-}
+    #   - PYTHONUNBUFFERED=1
+    #   - R2R_PORT=${R2R_PORT:-7272}
+    #   - R2R_HOST=${R2R_HOST:-0.0.0.0}
 
-  litellm:
-    deploy:
-      resources:
-        limits:
-          cpus: '1.0'       # 1 CPU для LiteLLM
-          memory: 2G        # 2 GB оперативной памяти
-        reservations:
-          cpus: '0.5'       # Минимум 0.5 CPU
-          memory: 1G        # Минимум 1 GB RAM
+    #   - PORT=${PORT:-7272}
+    #   - HOST=${HOST:-0.0.0.0}
+    #   - CONFIG_NAME=${CONFIG_NAME:-}
+    #   - CONFIG_PATH=${CONFIG_PATH:-}
+    #   - POSTGRES_USER=${POSTGRES_USER:-postgres}
+    #   - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-postgres}
+    #   - POSTGRES_HOST=${POSTGRES_HOST:-postgres}
+    #   - POSTGRES_PORT=${POSTGRES_PORT:-5432}
+    #   - POSTGRES_DBNAME=${POSTGRES_DBNAME:-postgres}
+    #   - PROJECT_NAME=${PROJECT_NAME:-mikoshi}
 
-  searxng:
-    deploy:
-      resources:
-        limits:
-          cpus: '2.0'        # Дадим контейнеру доступ к 2 ядрам CPU
-          memory: 2G         # Выделим 2 ГБ оперативной памяти
-        reservations:
-          cpus: '1.0'        # Минимум 1 ядро CPU
-          memory: 1G         # Минимум 1 ГБ RAM
+    #   # R2R
+    #   - R2R_CONFIG_NAME=${R2R_CONFIG_NAME:-} # Eventually get rid of CONFIG_NAME, but for now keep it for backwards compatibility
+    #   - R2R_CONFIG_PATH=${R2R_CONFIG_PATH:-} # ./config/r2r.toml Eventually get rid of CONFIG_PATH, but for now keep it for backwards compatibility
+    #   - R2R_PROJECT_NAME=${R2R_PROJECT_NAME:-mikoshi}
 
-  grafana:
-    deploy:
-      resources:
-        limits:
-          cpus: '0.5'       # 0.5 ядра
-          memory: 1G        # Ограничение 1 GB
-        reservations:
-          cpus: '0.25'      # Минимум 0.25 CPU
-          memory: 512M      # Минимум 512 MB
+    #   # Postgres
+    #   - R2R_POSTGRES_USER=${R2R_POSTGRES_USER:-postgres} # Eventually get rid of POSTGRES_USER, but for now keep it for backwards compatibility
+    #   - R2R_POSTGRES_PASSWORD=${R2R_POSTGRES_PASSWORD:-postgres} # Eventually get rid of POSTGRES_PASSWORD, but for now keep it for backwards compatibility
+    #   - R2R_POSTGRES_HOST=${R2R_POSTGRES_HOST:-postgres} # Eventually get rid of POSTGRES_HOST, but for now keep it for backwards compatibility
+    #   - R2R_POSTGRES_PORT=${R2R_POSTGRES_PORT:-5432} # Eventually get rid of POSTGRES_PORT, but for now keep it for backwards compatibility
+    #   - R2R_POSTGRES_DBNAME=${R2R_POSTGRES_DBNAME:-postgres} # Eventually get rid of POSTGRES_DBNAME, but for now keep it for backwards compatibility
+    #   - R2R_POSTGRES_MAX_CONNECTIONS=${R2R_POSTGRES_MAX_CONNECTIONS:-1024} # Eventually get rid of POSTGRES_MAX_CONNECTIONS, but for now keep it for backwards compatibility
+    #   - R2R_POSTGRES_PROJECT_NAME=${R2R_POSTGRES_PROJECT_NAME:-mikoshi} # Eventually get rid of POSTGRES_PROJECT_NAME, but for now keep it for backwards compatibility
 
-  prometheus:
-    deploy:
-      resources:
-        limits:
-          cpus: '1.0'       # 1 ядро CPU для Prometheus
-          memory: 2G        # 2 GB RAM
-        reservations:
-          cpus: '0.5'       # Минимум 0.5 CPU
-          memory: 1G        # 1 GB RAM
+    #   - HUGGINGFACE_API_KEY=${HUGGINGFACE_API_KEY:-}
+    #   - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+    #   - OPENAI_API_BASE=${OPENAI_API_BASE:-}
+    #   - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+    #   - AZURE_API_KEY=${AZURE_API_KEY:-}
+    #   - AZURE_API_BASE=${AZURE_API_BASE:-}
+    #   - AZURE_API_VERSION=${AZURE_API_VERSION:-}
+    #   - GOOGLE_APPLICATION_CREDENTIALS=${GOOGLE_APPLICATION_CREDENTIALS:-}
+    #   - VERTEX_PROJECT=${VERTEX_PROJECT:-}
+    #   - VERTEX_LOCATION=${VERTEX_LOCATION:-}
+    #   - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID:-}
+    #   - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY:-}
+    #   - AWS_REGION_NAME=${AWS_REGION_NAME:-}
+    #   - GROQ_API_KEY=${GROQ_API_KEY:-}
+    #   - COHERE_API_KEY=${COHERE_API_KEY:-}
+    #   - ANYSCALE_API_KEY=${ANYSCALE_API_KEY:-}
+    #   - OLLAMA_API_BASE=${OLLAMA_API_BASE:-http://ollama:11434}
+    #   - HUGGINGFACE_API_BASE=${HUGGINGFACE_API_BASE:-http://host.docker.internal:8080}
+    #   - HUGGINGFACE_API_KEY=${HUGGINGFACE_API_KEY}
+    #   - UNSTRUCTURED_API_KEY=${UNSTRUCTURED_API_KEY:-}
+    #   - UNSTRUCTURED_API_URL=${UNSTRUCTURED_API_URL:-https://api.unstructured.io/general/v0/general}
+    #   - UNSTRUCTURED_LOCAL_URL=${UNSTRUCTURED_LOCAL_URL:-http://unstructured:7275}
+    #   - UNSTRUCTURED_NUM_WORKERS=${UNSTRUCTURED_NUM_WORKERS:-10}
+    #   - HATCHET_CLIENT_TLS_STRATEGY=none
+    #   - HATCHET_CLIENT_GRPC_ADDRESS="hatchet-engine:7077"
+    #   - HATCHET_CLIENT_GRPC_MAX_RECV_MESSAGE_LENGTH=${HATCHET_CLIENT_GRPC_MAX_RECV_MESSAGE_LENGTH:-134217728}
+    #   - HATCHET_CLIENT_GRPC_MAX_SEND_MESSAGE_LENGTH=${HATCHET_CLIENT_GRPC_MAX_SEND_MESSAGE_LENGTH:-134217728}
+    # command: >
+    #   sh -c '
+    #     if [ -z "$${HATCHET_CLIENT_TOKEN}" ]; then
+    #       export HATCHET_CLIENT_TOKEN=$$(cat /hatchet_api_key/api_key.txt)
+    #     fi
+    #     exec uvicorn core.main.app_entry:app --host $${R2R_HOST} --port $${R2R_PORT}
+    #   '
+    # networks:
+    #   mikoshi-network:
+    #     aliases:
+    #       - r2r
+    # healthcheck:
+    #   test: ["CMD", "curl", "-f", "http://localhost:${R2R_PORT:-7272}/v2/health"]
+    #   interval: 6s
+    #   timeout: 5s
+    #   retries: 5
+    # restart: on-failure
+    # volumes:
+      # - ./config/r2r.toml:/app/config/r2r.toml
+      # - ${R2R_CONFIG_PATH:-/}:${R2R_CONFIG_PATH:-/app/config}
+      # - hatchet_api_key:/hatchet_api_key:ro
+    # labels:
+    #   - "traefik.enable=true"
+    #   - "traefik.http.routers.r2r.rule=Host(`api.${DOMAIN_NAME}`)"
+    #   - "traefik.http.routers.r2r.entrypoints=websecure"
+    #   - "traefik.http.routers.r2r.tls.certresolver=myresolver"
+    #   - "traefik.http.services.r2r.loadbalancer.server.port=${PORT:-7272}"
+    #   - "traefik.http.middlewares.r2r-headers.headers.customrequestheaders.Access-Control-Allow-Origin=*"
+    #   - "traefik.http.middlewares.r2r-headers.headers.customrequestheaders.Access-Control-Allow-Methods=GET,POST,OPTIONS"
+    #   - "traefik.http.middlewares.r2r-headers.headers.customrequestheaders.Access-Control-Allow-Headers=DNT,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Range,Authorization"
+    #   - "traefik.http.middlewares.r2r-headers.headers.customresponseheaders.Access-Control-Expose-Headers=Content-Length,Content-Range"
+    #   - "traefik.http.routers.r2r.middlewares=r2r-headers"
+    # extra_hosts:
+    #   - host.docker.internal:host-gateway
+    # depends_on:
+    #   setup-token:
+    #     condition: service_completed_successfully
+    #   unstructured:
+    #     condition: service_healthy
 
-  tika:
-    deploy:
-      resources:
-        limits:
-          cpus: '0.5'       # 0.5 CPU для tika
-          memory: 1G        # 1 GB RAM
-        reservations:
-          cpus: '0.25'      # Минимум 0.25 CPU
-          memory: 512M      # 512 MB RAM
+  # traefik:
+  #   deploy:
+  #     resources:  #       limits:
+  #         cpus: '0.5'       # 0.5 CPU
+  #         memory: 1G        # 1 GB RAM
+  #       reservations:
+  #         cpus: '0.25'      # 0.25 CPU минимум
+  #         memory: 512M      # 512 MB
 
-  watchtower:
-    deploy:
-      resources:
-        limits:
-          cpus: '0.5'       # 0.5 CPU
-          memory: 512M      # 512 MB RAM
-        reservations:
-          cpus: '0.25'      # Минимум 0.25 CPU
-          memory: 256M      # Минимум 256 МБ
+  # litellm:
+  #   deploy:
+  #     resources:
+  #       limits:
+  #         cpus: '1.0'       # 1 CPU для LiteLLM
+  #         memory: 2G        # 2 GB оперативной памяти
+  #       reservations:
+  #         cpus: '0.5'       # Минимум 0.5 CPU
+  #         memory: 1G        # Минимум 1 GB RAM
+
+  # searxng:
+  #   deploy:
+  #     resources:
+  #       limits:
+  #         cpus: '2.0'        # Дадим контейнеру доступ к 2 ядрам CPU
+  #         memory: 2G         # Выделим 2 ГБ оперативной памяти
+  #       reservations:
+  #         cpus: '1.0'        # Минимум 1 ядро CPU
+  #         memory: 1G         # Минимум 1 ГБ RAM
+
+  # grafana:
+  #   deploy:
+  #     resources:
+  #       limits:
+  #         cpus: '0.5'       # 0.5 ядра
+  #         memory: 1G        # Ограничение 1 GB
+  #       reservations:
+  #         cpus: '0.25'      # Минимум 0.25 CPU
+  #         memory: 512M      # Минимум 512 MB
+
+  # prometheus:
+  #   deploy:
+  #     resources:
+  #       limits:
+  #         cpus: '1.0'       # 1 ядро CPU для Prometheus
+  #         memory: 2G        # 2 GB RAM
+  #       reservations:
+  #         cpus: '0.5'       # Минимум 0.5 CPU
+  #         memory: 1G        # 1 GB RAM
+
+  # tika:
+  #   deploy:
+  #     resources:
+  #       limits:
+  #         cpus: '0.5'       # 0.5 CPU для tika
+  #         memory: 1G        # 1 GB RAM
+  #       reservations:
+  #         cpus: '0.25'      # Минимум 0.25 CPU
+  #         memory: 512M      # 512 MB RAM
+
+  # watchtower:
+  #   deploy:
+  #     resources:
+  #       limits:
+  #         cpus: '0.5'       # 0.5 CPU
+  #         memory: 512M      # 512 MB RAM
+  #       reservations:
+  #         cpus: '0.25'      # Минимум 0.25 CPU
+  #         memory: 256M      # Минимум 256 МБ

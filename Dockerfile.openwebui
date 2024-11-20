@@ -1,0 +1,34 @@
+# Этап 1: Базовый образ с Open WebUI
+FROM ghcr.io/open-webui/open-webui:main AS base
+
+# Установка необходимых пакетов и инструментов
+RUN apt-get update && \
+    DEBIAN_FRONTEND=noninteractive apt-get install -y wget iputils-ping sudo && \
+    pip install matplotlib yfinance numpy
+
+# Предварительная установка gVisor в /usr/bin/runsc
+RUN wget -O /tmp/runsc "https://storage.googleapis.com/gvisor/releases/release/latest/$(uname -m)/runsc" && \
+    wget -O /tmp/runsc.sha512 "https://storage.googleapis.com/gvisor/releases/release/latest/$(uname -m)/runsc.sha512" && \
+    cd /tmp && sha512sum -c runsc.sha512 && \
+    chmod 555 /tmp/runsc && mv /tmp/runsc /usr/bin/runsc
+
+# Этап 2: Финальный образ с настройками окружения и командой запуска
+FROM base AS final
+
+# Установка переменных окружения для клапанов безопасности
+ENV CODE_EVAL_VALVE_OVERRIDE_MAX_RUNTIME_SECONDS=60 \
+    CODE_EVAL_VALVE_OVERRIDE_MAX_RAM_MEGABYTES=512 \
+    CODE_EVAL_VALVE_OVERRIDE_AUTO_INSTALL=false \
+    CODE_EVAL_VALVE_OVERRIDE_REQUIRE_RESOURCE_LIMITING=true \
+    CODE_EVAL_VALVE_OVERRIDE_NETWORKING_ALLOWED=false \
+    CODE_EVAL_VALVE_OVERRIDE_DEBUG=false \
+    CODE_EVAL_VALVE_OVERRIDE_MAX_FILES_PER_EXECUTION=10 \
+    CODE_EVAL_VALVE_OVERRIDE_MAX_FILES_PER_USER=100 \
+    CODE_EVAL_VALVE_OVERRIDE_MAX_MEGABYTES_PER_USER=500
+
+# Экспорт порта 8000
+EXPOSE 8000
+
+# Команда запуска
+CMD ["./start.sh"]
+

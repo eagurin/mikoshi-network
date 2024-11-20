@@ -8,7 +8,6 @@ description: A pipeline for creating and utilizing a knowledge graph from data.
 requirements: pandas, networkx, plotly
 """
 from typing import List, Union, Generator, Iterator
-from schemas import OpenAIChatMessage
 import os
 import pandas as pd
 import networkx as nx

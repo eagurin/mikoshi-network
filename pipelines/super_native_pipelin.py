@@ -6,11 +6,9 @@ requirements: r2r, langchain, langchain-openai, langchain-community, duckduckgo-
 description: Pipeline для интеграции R2R агента в OpenWebUI с динамической конфигурацией параметров с помощью промптов и LangChain.
 """
 
-import asyncio
 import os
 import logging
-from typing import List, Optional, Callable, Any
-import httpx
+from typing import Optional, Callable, Any
 from pydantic import BaseModel, Field
 from r2r import R2RClient
 from langchain_openai.llms import OpenAI
@@ -24,10 +22,10 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
-class Pipeline:
+class Pipe:
     class Valves(BaseModel):
         R2R_API_URL: str = Field(
-            default=os.getenv("R2R_API_URL", "https://api.r2r.ai/v2"),
+            default=os.getenv("R2R_API_URL", "http://90.156.254.145:7272"),
             description="API URL R2R агента",
         )
         R2R_API_TOKEN: str = Field(
@@ -58,7 +56,7 @@ class Pipeline:
         )
 
     def __init__(self):
-        self.type = "pipe"
+        self.type = "filter"
         self.id = "r2r_agent_pipeline"
         self.name = "R2R Agent Pipeline"
         self.valves = self.Valves()

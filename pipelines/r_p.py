@@ -1,31 +1,27 @@
 """
-title: R2R Green Agent Pipeline
+title: R2R Green Agent Pipeline with OpenWebUI
 author: Evgeny A.
 author_url: https://github.com/open-webui
-funding_url: https://github.com/open-webui
-version: 0.0.0.001a
-requirements: r2r, langchain, langchain-openai, langchain-community, openai, duckduckgo-search, httpx, pydantic
+version: 1.0.0
+requirements: r2r, langchain, langchain-openai, langchain-community, duckduckgo-search, httpx, pydantic
 """
 
 import asyncio
 import os
 import logging
 from typing import List, Optional, Callable, Any
-
 import httpx
 from pydantic import BaseModel, Field
 from r2r import R2RClient
+from langchain_openai.llms import OpenAI
+from langchain.agents import initialize_agent, Tool, AgentType
+from langchain.memory import ConversationBufferWindowMemory
+from langchain_community.tools import DuckDuckGoSearchRun
 
 # Настройка логирования
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Импорты из библиотеки LangChain
-from langchain_openai.llms import OpenAI
-from langchain.agents import initialize_agent, Tool, AgentType
-from langchain.memory import ConversationBufferWindowMemory
-from langchain_community.tools import DuckDuckGoSearchRun
-# from langchain_community.chat_models import ChatOpenAI
 
 class Pipeline:
     class Valves(BaseModel):
@@ -56,7 +52,7 @@ class Pipeline:
             description="Top-p parameter for generation",
         )
         max_tokens: int = Field(
-            default=1024,
+            default=4024,
             description="Maximum number of tokens for generation",
         )
         memory_limit: int = Field(
@@ -77,10 +73,8 @@ class Pipeline:
             ),
         )
         self.user_valves = self.UserValves()
-        self.client = httpx.AsyncClient(
-            timeout=self.valves.TIMEOUT, verify=False
-        )
         self.r2r_client = R2RClient(self.valves.API_BASE_URL)
+        self.client = httpx.AsyncClient(timeout=self.valves.TIMEOUT)
 
         # Инициализация LLM
         self.llm = OpenAI(
@@ -94,7 +88,12 @@ class Pipeline:
                 name="Search",
                 func=DuckDuckGoSearchRun().run,
                 description="Полезно для поиска информации в интернете.",
-            )
+            ),
+            Tool(
+                name="R2R Query",
+                func=self.r2r_query_tool,
+                description="Запрос к R2R для получения ответа.",
+            ),
         ]
 
         # Инициализация памяти
@@ -116,9 +115,6 @@ class Pipeline:
     def get_api_key(self) -> str:
         return os.getenv("OPENAI_API_KEY", "your-openai-api-key")
 
-    def pipelines(self) -> List[str]:
-        return []
-
     async def pipe(
         self,
         body: dict,
@@ -129,28 +125,63 @@ class Pipeline:
             if not messages:
                 raise ValueError("Empty 'messages' list in 'body'.")
 
-            # Извлечение последнего запроса пользователя
-            user_message = messages[-1]["content"]
-
-            # Обработка запроса агента - синхронный вызов в отдельном потоке
-            response = await asyncio.to_thread(self.agent.run, user_message)
-
-            # Отправляем ответ через эмиттер событий, если он есть
+            # Этап 1: Быстрый ответ (например, подтверждение принятия запроса)
+            quick_response = "Спасибо, ваш запрос обрабатывается."
             if __event_emitter__:
                 await __event_emitter__(
-                    {"type": "message", "data": {"content": response}}
+                    {"type": "message", "data": {"content": quick_response}}
                 )
 
-            return response
+            # Этап 2: Параллельный поиск
+            user_message = messages[-1]["content"]
+            search_task = asyncio.create_task(
+                self.perform_search(user_message)
+            )
+            agent_response_task = asyncio.create_task(
+                self.agent.run(user_message)
+            )
 
+            # Ожидаем результата поиска и ответа от агента
+            search_result = await search_task
+            agent_response = await agent_response_task
+
+            if __event_emitter__:
+                await __event_emitter__(
+                    {
+                        "type": "message",
+                        "data": {
+                            "content": f"Результат поиска: {search_result}"
+                        },
+                    }
+                )
+                await __event_emitter__(
+                    {"type": "message", "data": {"content": agent_response}}
+                )
+
+            return agent_response
         except Exception as e:
-            error_message = f"Error during processing: {e}"
+            error_message = f"Ошибка при обработке: {str(e)}"
             logger.exception(error_message)
             if __event_emitter__:
                 await __event_emitter__(
                     {"type": "error", "data": {"description": error_message}}
                 )
             raise
+
+    async def perform_search(self, query: str) -> str:
+        """Поиск информации используется DuckDuckGo или запрос к R2R."""
+        search_tool = DuckDuckGoSearchRun()
+        return await search_tool.run(query)
+
+    async def r2r_query_tool(self, query: str) -> str:
+        """Инструмент для выполнения запроса к R2R."""
+        response = await self.r2r_client.agent(
+            messages=[{"role": "user", "content": query}],
+            vector_search_settings={"search_limit": 5, "filters": {}},
+        )
+        return response.get("results", [{}])[0].get(
+            "content", "Нет ответа от R2R."
+        )
 
 
 # Пример использования Pipeline с обработкой событий
@@ -173,25 +204,15 @@ async def main():
     pipeline = Pipeline()
     request_body = {
         "messages": [
-            {
-                "role": "user",
-                "content": """
-                нужно выполнять задачи асинхронно, максимально сократив время молчания в общении с клиентом. в  самом начале надоВ самом начале нужно разделять задачи, то есть их выполнять синхронно. Первая задача – это мы делаем просто query-запрос быстрый какой-то, с темой, чтобы что-то, ну, забить время разговора, пока ответ агента подготавливается. То есть это что-то, ну, там, вводная какая-то информация. Вот, например, у OpenAI сейчас там, вот, была эта хрень, то, что там как разные сообщения, типа предподготовка. Вот, надо что-то подобное сделать. А в идеале вообще сделать так же. Так же это все делается синхронно. То есть в самом начале у нас стартуют, так, две задачи. Одна – это query, вот этот быстрый ответ. Другая – агент готовит ответ. А так же, ну, пока давай с этим разберемся. Да, агент мы используем максимально, то есть пытаемся его прикрутить туда, чтобы в самом pipeline, и вообще мы почти не взаимодействовали с кодом, чтобы все взаимодействие с чатом максимально сразу передавалось и замыкалось, то есть закупоривалось вот на R2R-агенте. В него, ну, то есть это его полностью задача. Мы не должны с этим данным никак будем перестираться.
-
-
-В общем, такое дело. Работает хорошо. Другой момент. Он должен работать как бы всегда, то есть всегда мог услышать то, что ты ему напишешь. То есть вот он сейчас долго висит, долго грузит, но ничего не пишет. Но все равно он что-то же думает, изучает. В итоге, когда ведется диалог с агентом, то есть он оставался в автономном режиме работать и прогружал, пока не ответит. То есть чтобы он думал не только отвечая на вопрос, а думал все время. Вот ты понимаешь о чем. Я думаю использовать либо лэнгчейн, либо аутджен для этих целей. Подумай, как лучше всего сделать.
-
-                """,
-            }
+            {"role": "user", "content": "Расскажи мне о нейронных сетях."}
         ],
         "kwargs": {"stream": False},
     }
-
     try:
         response = await pipeline.pipe(request_body, example_event_emitter)
         print("Final Response:", response)
     except Exception as e:
-        print(f"An error occurred: {e}")
+        print(f"An error occurred: {str(e)}")
 
 
 if __name__ == "__main__":

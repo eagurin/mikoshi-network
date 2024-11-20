@@ -1,115 +1,107 @@
 model_list:
-  - model_name: gpt-4o
+  # Модели OpenAI
+  - model_name: "openai/*"
     litellm_params:
-      model: gpt-4o
-      master_key: "${LITELLM_MASTER_KEY}"
+      model: "${model_name}"
       openai_api_key: "${OPENAI_API_KEY}"
       proxy:
         http: "${HTTP_PROXY}"
         https: "${HTTPS_PROXY}"
         no_proxy: "${NO_PROXY}"
-      model_identifier: "gpt-4o-id"
+      model_identifier: "${model_name}-id"
       model_details:
-        description: "gpt-4o"
+        description: "OpenAI model ${model_name}"
 
-  - model_name: gpt-4o-mini
+  # Модели Hugging Face
+  - model_name: "huggingface/*"
     litellm_params:
-      model: gpt-4o-mini
-      master_key: "${LITELLM_MASTER_KEY}"
-      openai_api_key: "${OPENAI_API_KEY}"
+      model: "${model_name}"
+      huggingface_api_key: "${HUGGINGFACE_API_KEY}"
       proxy:
         http: "${HTTP_PROXY}"
         https: "${HTTPS_PROXY}"
         no_proxy: "${NO_PROXY}"
-      model_identifier: "gpt-4o-mini-id"
+      model_identifier: "${model_name}-id"
       model_details:
-        description: "gpt-4o-mini"
+        description: "Hugging Face model ${model_name}"
 
-  - model_name: gpt-3.5-turbo
+  # Модели Anthropic
+  - model_name: "anthropic/*"
     litellm_params:
-      model: azure/chatgpt-v-2
-      master_key: "${LITELLM_MASTER_KEY}"
-      openai_api_key: "${OPENAI_API_KEY}"
+      model: "${model_name}"
+      anthropic_api_key: "${ANTHROPIC_API_KEY}"
       proxy:
         http: "${HTTP_PROXY}"
         https: "${HTTPS_PROXY}"
         no_proxy: "${NO_PROXY}"
-      model_identifier: "gpt-3.5-turbo-id"
+      model_identifier: "${model_name}-id"
       model_details:
-        description: "Azure ChatGPT v2 based model"
+        description: "Anthropic model ${model_name}"
 
-  - model_name: gpt-3.5-turbo-large
+  # Модели Cohere
+  - model_name: "cohere/*"
     litellm_params:
-      model: gpt-3.5-turbo-large
-      master_key: "${LITELLM_MASTER_KEY}"
-      openai_api_key: "${OPENAI_API_KEY}"
+      model: "${model_name}"
+      cohere_api_key: "${COHERE_API_KEY}"
       proxy:
         http: "${HTTP_PROXY}"
         https: "${HTTPS_PROXY}"
         no_proxy: "${NO_PROXY}"
-      model_identifier: "gpt-3.5-turbo-large-id"
+      model_identifier: "${model_name}-id"
       model_details:
-        description: "Large variant of GPT-3.5-turbo"
+        description: "Cohere model ${model_name}"
 
-  - model_name: gpt-4
+  # Модели Together
+  - model_name: "together/*"
     litellm_params:
-      model: gpt-4
-      master_key: "${LITELLM_MASTER_KEY}"
-      openai_api_key: "${OPENAI_API_KEY}"
+      model: "${model_name}"
+      together_api_key: "${TOGETHER_API_KEY}"
       proxy:
         http: "${HTTP_PROXY}"
         https: "${HTTPS_PROXY}"
         no_proxy: "${NO_PROXY}"
-      model_identifier: "gpt-4-id"
+      model_identifier: "${model_name}-id"
       model_details:
-        description: "GPT-4 model"
+        description: "Together model ${model_name}"
 
-  - model_name: sagemaker-completion-model
+  # Модели ngrok (если применимо)
+  - model_name: "ngrok/*"
     litellm_params:
-      model: sagemaker/completion-model
-      aws_access_key_id: "${AWS_ACCESS_KEY_ID:-}"
-      aws_secret_access_key: "${AWS_SECRET_ACCESS_KEY:-}"
-      aws_region_name: "${AWS_REGION_NAME:-}"
+      model: "${model_name}"
+      ngrok_api_key: "${NGROK_API_KEY}"
       proxy:
         http: "${HTTP_PROXY}"
         https: "${HTTPS_PROXY}"
         no_proxy: "${NO_PROXY}"
-      model_identifier: "sagemaker-completion-id"
+      model_identifier: "${model_name}-id"
       model_details:
-        description: "AWS SageMaker Completion Model"
+        description: "ngrok model ${model_name}"
 
-  - model_name: text-embedding-ada-002
+  # Модели Anyscale
+  - model_name: "anyscale/*"
     litellm_params:
-      model: text-embedding-ada-002
-      openai_api_key: "${OPENAI_API_KEY}"
+      model: "${model_name}"
+      anyscale_api_key: "${ANYSCALE_API_KEY}"
       proxy:
         http: "${HTTP_PROXY}"
         https: "${HTTPS_PROXY}"
         no_proxy: "${NO_PROXY}"
-      model_identifier: "text-embedding-ada-002-id"
+      model_identifier: "${model_name}-id"
       model_details:
-        description: "OpenAI ADA 002 text embedding model"
+        description: "Anyscale model ${model_name}"
 
-  - model_name: dall-e-2
+  # Модели Ollama
+  - model_name: "ollama/*"
     litellm_params:
-      model: dall-e-2
-      openai_api_key: "${OPENAI_API_KEY}"
+      model: "${model_name}"
+      ollama_api_base: "${OLLAMA_API_BASE}"
       proxy:
         http: "${HTTP_PROXY}"
         https: "${HTTPS_PROXY}"
         no_proxy: "${NO_PROXY}"
-      model_identifier: "dall-e-2-id"
+      model_identifier: "${model_name}-id"
       model_details:
-        description: "DALL-E 2 model for image generation"
+        description: "Ollama model ${model_name}"
 
-  - model_name: openai-dall-e-3
-    litellm_params:
-      model: openai-dall-e-3
-      openai_api_key: "${OPENAI_API_KEY}"
-      proxy:
-        http: "${HTTP_PROXY}"
-        https: "${HTTPS_PROXY}"
-        no_proxy: "${NO_PROXY}"
-      model_identifier: "openai-dall-e-3-id"
-      model_details:
-        description: "OpenAI DALL-E 3 model for advanced image generation"
+litellm_settings:
+  callbacks: ["prometheus"]

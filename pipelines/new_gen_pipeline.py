@@ -1,31 +1,28 @@
 """
-title: R2R Green Agent Pipeline
+title: R2R Unified Agent Pipeline o1o
 author: Evgeny A.
 author_url: https://github.com/open-webui
 funding_url: https://github.com/open-webui
-version: 0.0.0.001a
-requirements: r2r, langchain, langchain-openai, langchain-community, openai, duckduckgo-search, httpx, pydantic
+version: 0.0.0.003d
+requirements: r2r, langchain, langchain-openai, langchain-community, duckduckgo-search, httpx, pydantic
 """
 
 import asyncio
 import os
 import logging
 from typing import List, Optional, Callable, Any
-
 import httpx
 from pydantic import BaseModel, Field
 from r2r import R2RClient
+from langchain_openai import ChatOpenAI
+from langchain.agents import AgentType, Tool, initialize_agent
+from langchain.memory import ConversationBufferMemory
+from langchain_community.tools import DuckDuckGoSearchRun
 
 # Настройка логирования
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Импорты из библиотеки LangChain
-from langchain_openai.llms import OpenAI
-from langchain.agents import initialize_agent, Tool, AgentType
-from langchain.memory import ConversationBufferWindowMemory
-from langchain_community.tools import DuckDuckGoSearchRun
-# from langchain_community.chat_models import ChatOpenAI
 
 class Pipeline:
     class Valves(BaseModel):
@@ -66,7 +63,7 @@ class Pipeline:
 
     def __init__(self):
         self.type = "pipe"
-        self.name = "R2R Green Agent Pipeline"
+        self.name = "R2R Unified Agent Pipeline"
         self.valves = self.Valves(
             API_BASE_URL=os.getenv(
                 "API_BASE_URL", "https://api.durka.dndstudio.ru"
@@ -82,9 +79,12 @@ class Pipeline:
         )
         self.r2r_client = R2RClient(self.valves.API_BASE_URL)
 
-        # Инициализация LLM
-        self.llm = OpenAI(
-            openai_api_key=self.get_api_key(),
+        # Получение API ключа OpenAI
+        self.openai_api_key = self.get_api_key()
+
+        # Инициализация ChatOpenAI
+        self.llm = ChatOpenAI(
+            openai_api_key=self.openai_api_key,
             temperature=self.user_valves.temperature,
         )
 
@@ -98,9 +98,8 @@ class Pipeline:
         ]
 
         # Инициализация памяти
-        self.memory = ConversationBufferWindowMemory(
+        self.memory = ConversationBufferMemory(
             memory_key="chat_history",
-            k=self.user_valves.memory_limit,
             return_messages=True,
         )
 
@@ -114,7 +113,11 @@ class Pipeline:
         )
 
     def get_api_key(self) -> str:
-        return os.getenv("OPENAI_API_KEY", "your-openai-api-key")
+        api_key = os.getenv("OPENAI_API_KEY")
+        if not api_key:
+            logger.error("OPENAI_API_KEY is not set in environment variables.")
+            raise ValueError("OPENAI_API_KEY is not set.")
+        return api_key
 
     def pipelines(self) -> List[str]:
         return []
@@ -132,17 +135,30 @@ class Pipeline:
             # Извлечение последнего запроса пользователя
             user_message = messages[-1]["content"]
 
-            # Обработка запроса агента - синхронный вызов в отдельном потоке
-            response = await asyncio.to_thread(self.agent.run, user_message)
+            # Запуск двух параллельных задач
+            quick_response_task = asyncio.create_task(
+                self.quick_response(user_message)
+            )
+            agent_response_task = asyncio.create_task(
+                self.agent_response(user_message)
+            )
 
-            # Отправляем ответ через эмиттер событий, если он есть
+            # Ожидаем быструю задачу
+            quick_response = await quick_response_task
             if __event_emitter__:
                 await __event_emitter__(
-                    {"type": "message", "data": {"content": response}}
+                    {"type": "message", "data": {"content": quick_response}}
                 )
+            logger.info(f"Быстрый ответ: {quick_response}")
 
-            return response
-
+            # Ожидаем основной ответ от агента
+            agent_response = await agent_response_task
+            if __event_emitter__:
+                await __event_emitter__(
+                    {"type": "message", "data": {"content": agent_response}}
+                )
+            logger.info(f"Ответ агента: {agent_response}")
+            return agent_response
         except Exception as e:
             error_message = f"Error during processing: {e}"
             logger.exception(error_message)
@@ -151,6 +167,20 @@ class Pipeline:
                     {"type": "error", "data": {"description": error_message}}
                 )
             raise
+
+    async def quick_response(self, query: str) -> str:
+        """Асинхронная быстрая задача."""
+        logger.info(f"Старт быстрой задачи для запроса: {query}")
+        await asyncio.sleep(0.5)  # эмуляция задержки
+        return f"Мы получили ваш запрос: '{query}'. Пожалуйста, подождите..."
+
+    async def agent_response(self, query: str) -> str:
+        """Основная задача агента."""
+        logger.info(f"Запуск агента для запроса: {query}")
+        response = await asyncio.get_event_loop().run_in_executor(
+            None, self.agent.run, query
+        )
+        return response
 
 
 # Пример использования Pipeline с обработкой событий
@@ -176,17 +206,12 @@ async def main():
             {
                 "role": "user",
                 "content": """
-                нужно выполнять задачи асинхронно, максимально сократив время молчания в общении с клиентом. в  самом начале надоВ самом начале нужно разделять задачи, то есть их выполнять синхронно. Первая задача – это мы делаем просто query-запрос быстрый какой-то, с темой, чтобы что-то, ну, забить время разговора, пока ответ агента подготавливается. То есть это что-то, ну, там, вводная какая-то информация. Вот, например, у OpenAI сейчас там, вот, была эта хрень, то, что там как разные сообщения, типа предподготовка. Вот, надо что-то подобное сделать. А в идеале вообще сделать так же. Так же это все делается синхронно. То есть в самом начале у нас стартуют, так, две задачи. Одна – это query, вот этот быстрый ответ. Другая – агент готовит ответ. А так же, ну, пока давай с этим разберемся. Да, агент мы используем максимально, то есть пытаемся его прикрутить туда, чтобы в самом pipeline, и вообще мы почти не взаимодействовали с кодом, чтобы все взаимодействие с чатом максимально сразу передавалось и замыкалось, то есть закупоривалось вот на R2R-агенте. В него, ну, то есть это его полностью задача. Мы не должны с этим данным никак будем перестираться.
-
-
-В общем, такое дело. Работает хорошо. Другой момент. Он должен работать как бы всегда, то есть всегда мог услышать то, что ты ему напишешь. То есть вот он сейчас долго висит, долго грузит, но ничего не пишет. Но все равно он что-то же думает, изучает. В итоге, когда ведется диалог с агентом, то есть он оставался в автономном режиме работать и прогружал, пока не ответит. То есть чтобы он думал не только отвечая на вопрос, а думал все время. Вот ты понимаешь о чем. Я думаю использовать либо лэнгчейн, либо аутджен для этих целей. Подумай, как лучше всего сделать.
-
+                Нужно выполнять задачи асинхронно, максимально сократив время молчания в общении с клиентом. В самом начале нужно разделять задачи, то есть их выполнять синхронно. Первая задача – это мы делаем просто query-запрос, с темой, чтобы что-то, ну, забить время разговора, пока ответ агента подготавливается. Это должно бы быть что-то вроде быстрого ответа. 
                 """,
             }
         ],
         "kwargs": {"stream": False},
     }
-
     try:
         response = await pipeline.pipe(request_body, example_event_emitter)
         print("Final Response:", response)
@@ -195,4 +220,7 @@ async def main():
 
 
 if __name__ == "__main__":
+    if not os.getenv("OPENAI_API_KEY"):
+        logger.error("OPENAI_API_KEY is not set in environment variables.")
+        exit(1)
     asyncio.run(main())
