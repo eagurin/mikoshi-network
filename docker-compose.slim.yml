@@ -1,0 +1,367 @@
+networks:
+  mikoshi-network:
+    name: mikoshi-network
+    driver: bridge
+    attachable: true
+    labels:
+      - "com.docker.compose.recreate=always"
+
+volumes:
+  openwebui_postgres_data:
+    name: ${VOLUME_OPENWEBUI_POSTGRES_DATA:-openwebui_postgres_data}
+  open_webui_data:
+    name: ${VOLUME_OPEN_WEBUI_DATA:-open_webui_data}
+  pipelines_data:
+    name: ${VOLUME_PIPELINES:-pipelines_data}
+  ollama_data:
+    name: ${VOLUME_OLLAMA_DATA:-ollama_data}
+  milvus_data:
+    name: ${VOLUME_MILVUS_DATA:-milvus_data}
+  letsencrypt:
+    name: ${VOLUME_LETSENCRYPT:-letsencrypt}
+  # comfyui_data:
+  #   name: ${VOLUME_COMFYUI_DATA:-comfyui_data}
+
+services:
+  openwebui-postgres:
+    image: pgvector/pgvector:pg16
+    # container_name: openwebui-postgres
+    profiles: [postgres]
+    environment:
+      POSTGRES_DB: ${OPENWEBUI_POSTGRES_DBNAME:-openwebui}
+      POSTGRES_USER: ${OPENWEBUI_POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${OPENWEBUI_POSTGRES_PASSWORD:-postgres}
+      POSTGRES_MAX_CONNECTIONS: ${R2R_POSTGRES_MAX_CONNECTIONS:-${POSTGRES_MAX_CONNECTIONS:-1024}}
+    volumes:
+      - openwebui_postgres_data:/var/lib/postgresql/data
+    networks:
+      - mikoshi-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${OPENWEBUI_POSTGRES_USER:-postgres} -d ${OPENWEBUI_POSTGRES_DBNAME:-openwebui}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: on-failure
+    command: >
+      postgres
+      -c max_connections=${R2R_POSTGRES_MAX_CONNECTIONS:-1024}
+
+  milvus:
+    image: milvusdb/milvus:latest
+    container_name: milvus
+    ports:
+      - "19530:19530"
+    volumes:
+      - milvus_data:/var/lib/milvus
+    networks:
+      - mikoshi-network
+    restart: always
+
+  traefik:
+    image: traefik:v3.2.0
+    command:
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--api.insecure=true"
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.websecure.address=:443"
+      - "--entrypoints.metrics.address=:8082" 
+      - "--metrics.prometheus=true"
+      - "--metrics.prometheus.entrypoint=metrics"
+      - "--certificatesresolvers.myresolver.acme.email=${ACME_EMAIL}"
+      - "--certificatesresolvers.myresolver.acme.storage=/letsencrypt/acme.json"
+      - "--certificatesresolvers.myresolver.acme.httpchallenge.entrypoint=web"
+      - "--certificatesresolvers.myresolver.acme.caServer=https://acme-v02.api.letsencrypt.org/directory"
+      - "--accesslog.filepath=/var/log/traefik/access.log"
+      - "--api.dashboard=true"
+      - "--log.level=INFO"
+      - "--accesslog=true"
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - letsencrypt:/letsencrypt
+    networks:
+      - mikoshi-network
+
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ollama
+    volumes:
+      - ollama_data:/root/.ollama
+      - open_webui_data:/app/backend/data
+    tty: true
+    networks:
+      - mikoshi-network
+    ports:
+      - "9000:9000"
+    restart: always
+
+  open-webui:
+    image: ghcr.io/open-webui/open-webui:${WEBUI_DOCKER_TAG:-ollama}
+    build:
+      context: .
+      dockerfile: Dockerfile.openwebui
+    container_name: open-webui
+    networks:
+      mikoshi-network:
+        aliases:
+          - open-webui
+    environment:
+    #   - WEBUI_NAME=Mikoshi
+    #   - OLLAMA_BASE_URL=http://ollama:11434
+    #   - PIPELINES_BASE_URL=http://pipelines:9099
+    #   - HF_ENDPOINT=https://hf-mirror.com
+    #   - COMFYUI_BASE_URL=http://host.docker.internal:8188/
+    #   - COMFYUI_API_URL=http://comfyui:8188
+    #   - SEARXNG_QUERY_URL=http://searxng:8080/search?q=<query>
+    #   - TTS_API_BASE_URL=http://openedai-speech:8000/v1
+    #   - COMFYUI_BASE_URL=http://comfyui:8188
+      - http_proxy=${http_proxy:-}
+      - https_proxy=${https_proxy:-}
+      - no_proxy=${no_proxy:-}
+      - ENABLE_RAG_WEB_SEARCH=True
+      - RAG_WEB_SEARCH_ENGINE="searxng"
+      - RAG_WEB_SEARCH_RESULT_COUNT=20
+      - RAG_WEB_SEARCH_CONCURRENT_REQUESTS=50
+      - NODE_OPTIONS=--max-old-space-size=4096
+    #   - TTS_VOICE=ru-RU-DmitryNeural
+    #   - TTS_API_KEY=${OPENAI_API_KEY:-}
+    #   - ENABLE_IMAGE_GENERATION=True
+    #   - CODE_EVAL_VALVE_OVERRIDE_MAX_RUNTIME_SECONDS=30
+    #   - CODE_EVAL_VALVE_OVERRIDE_MAX_RAM_MEGABYTES=512
+    #   - CODE_EVAL_VALVE_OVERRIDE_AUTO_INSTALL=false
+    #   - CODE_EVAL_VALVE_OVERRIDE_DEBUG=false
+    #   - CODE_EVAL_VALVE_OVERRIDE_MAX_FILES_PER_EXECUTION=10
+    #   - CODE_EVAL_VALVE_OVERRIDE_MAX_FILES_PER_USER=100
+    #   - CODE_EVAL_VALVE_OVERRIDE_MAX_MEGABYTES_PER_USER=100
+    #   - CODE_EVAL_VALVE_OVERRIDE_REQUIRE_RESOURCE_LIMITING=true
+    #   - CODE_EVAL_VALVE_OVERRIDE_WEB_ACCESSIBLE_DIRECTORY_PATH=/app/backend/data/user_files
+    #   - CODE_EVAL_VALVE_OVERRIDE_WEB_ACCESSIBLE_DIRECTORY_URL=/user_files
+    #   - CODE_EVAL_VALVE_OVERRIDE_NETWORKING_ALLOWED=false
+    env_file:
+      - .env
+    ports:
+      - "8080:8080"
+      - "8001:8001"
+    depends_on:
+      - openwebui-postgres
+      - ollama
+      - pipelines
+      - tika
+      - searxng
+      - litellm
+      - milvus
+      # - comfyui
+    extra_hosts:
+      - host.docker.internal:host-gateway
+    volumes:
+      - ./litellm/config.yaml:/app/config.yaml
+      - ./openwebui/config.json:/app/config.json
+      - open_webui_data:/app/backend/data
+      - /sys/fs/cgroup:/sys/fs/cgroup:rw
+    security_opt:
+      - seccomp:unconfined
+      - apparmor:unconfined
+      - label=type:container_engine_t
+    labels:
+      - "traefik.enable=${TRAEFIK_ENABLE:-false}"
+      - "traefik.http.routers.openwebui.rule=Host(`${DOMAIN_NAME}`)"
+      - "traefik.http.routers.openwebui.entrypoints=websecure"
+      - "traefik.http.routers.openwebui.tls.certresolver=myresolver"
+      - "traefik.http.services.openwebui.loadbalancer.server.port=8080"
+    restart: always
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  pipelines:
+    image: ghcr.io/open-webui/pipelines:latest
+    container_name: pipelines
+    hostname: pipelines
+    networks:
+      mikoshi-network:
+        aliases:
+          - pipelines
+    ports:
+      - "9099:9099"
+    environment:
+      - PIPELINES_REQUIREMENTS_PATH=./pipelines/requirements.txt
+      - PIPELINES_URLS=https://github.com/eagurin/mikoshi-network/blob/main/pipelines/mem0_melivis_pipeline.py
+      - HTTP_PROXY=${HTTP_PROXY:-}
+      - HTTPS_PROXY=${HTTPS_PROXY:-}
+      - NO_PROXY=${NO_PROXY:-}
+      - PIPELINES_URL="https://github.com/open-webui/pipelines/"
+    extra_hosts:
+      - host.docker.internal:host-gateway
+    volumes:
+      - pipelines_data:/app/pipelines
+      - open_webui_data:/app/backend/data
+    labels:
+      - "traefik.enable=${TRAEFIK_ENABLE:-false}"
+      - "traefik.http.routers.pipelines.rule=Host(`pipelines.${DOMAIN_NAME}`)"
+      - "traefik.http.routers.pipelines.entrypoints=websecure"
+      - "traefik.http.routers.pipelines.tls.certresolver=myresolver"
+      - "traefik.http.services.pipelines.loadbalancer.server.port=9099"
+    restart: always
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9099"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  searxng:
+    image: searxng/searxng:latest
+    container_name: searxng
+    ports:
+      - "8091:8080"
+    volumes:
+      - ./searxng:/etc/searxng
+    networks:
+      mikoshi-network:
+        aliases:
+          - searxng
+    restart: always
+    labels:
+      - "traefik.enable=${TRAEFIK_ENABLE:-false}"
+      - "traefik.http.routers.searxng.rule=Host(`search.${DOMAIN_NAME}`)"
+      - "traefik.http.routers.searxng.entrypoints=websecure"
+      - "traefik.http.routers.searxng.tls.certresolver=myresolver"
+      - "traefik.http.services.searxng.loadbalancer.server.port=8080"
+
+  litellm:
+    image: litellm/litellm:latest
+    container_name: litellm
+    platform: linux/amd64
+    ports:
+      - "4000:4000"
+    volumes:
+      - ./litellm/config.yaml:/app/config.yaml
+    environment:
+      - UI_USERNAME=${UI_USERNAME:-}
+      - UI_PASSWORD=${UI_PASSWORD:-}
+      - LITELLM_MASTER_KEY=${LITELLM_MASTER_KEY:-}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - HUGGINGFACE_API_KEY=${HUGGINGFACE_API_KEY:-}
+      - LANGCHAIN_API_KEY=${LANGCHAIN_API_KEY:-}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - COHERE_API_KEY=${COHERE_API_KEY:-}
+      - TOGETHER_API_KEY=${TOGETHER_API_KEY:-}
+      - NGROK_API_KEY=${NGROK_API_KEY:-}
+      - ANYSCALE_API_KEY=${ANYSCALE_API_KEY:-}
+      # - OLLAMA_API_BASE=${OLLAMA_API_BASE:-http://ollama:11434}
+
+      - AZURE_AD_TOKEN=${AZURE_AD_TOKEN:-}
+      - AZURE_AD_TOKEN_PROVIDER=${AZURE_AD_TOKEN_PROVIDER:-}
+      - AZURE_OPENAI_API_KEY=${AZURE_OPENAI_API_KEY:-}
+      - AZURE_API_BASE=${AZURE_API_BASE:-}
+      - AZURE_API_VERSION=${AZURE_API_VERSION:-}
+      - GOOGLE_APPLICATION_CREDENTIALS=${GOOGLE_APPLICATION_CREDENTIALS:-}
+      - VERTEX_PROJECT=${VERTEX_PROJECT:-}
+      - VERTEX_LOCATION=${VERTEX_LOCATION:-}
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID:-}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY:-}
+      - AWS_REGION_NAME=${AWS_REGION_NAME:-}
+
+      - http_proxy=${http_proxy:-}
+      - https_proxy=${https_proxy:-}
+      - no_proxy=${no_proxy:-}
+    networks:
+      - mikoshi-network
+    restart: always
+    labels:
+      - "traefik.enable=${TRAEFIK_ENABLE:-false}"
+      - "traefik.http.routers.litellm.rule=Host(`litellm.${DOMAIN_NAME}`)"
+      - "traefik.http.routers.litellm.entrypoints=websecure"
+      - "traefik.http.routers.litellm.tls.certresolver=myresolver"
+      - "traefik.http.services.litellm.loadbalancer.server.port=4000"
+
+  # comfyui:
+  #   build:
+  #     context: .
+  #     dockerfile: Dockerfile.comfyui
+  #   container_name: comfyui
+  #   platform: linux/arm64
+  #   ports:
+  #     - "8188:8188"
+  #   environment:
+  #     - COMFYUI_BASE_URL=http://host.docker.internal:8188/
+  #     # - COMFYUI_BASE_URL=http://host.docker.internal:7860/
+  #     - SPRAVKI_APP_ENV=production
+  #     - PYTHONUNBUFFERED=1
+  #     # - XPU_TARGET=CPU
+  #   volumes:
+  #     - comfyui_data:/app/ComfyUI
+  #   networks:
+  #     mikoshi-network:
+  #       aliases:
+  #         - comfyui
+  #   labels:
+  #     - "traefik.enable=${TRAEFIK_ENABLE:-false}"
+  #     - "traefik.http.routers.comfyui.rule=Host(`comfyui.${DOMAIN_NAME}`)"
+  #     - "traefik.http.routers.comfyui.entrypoints=websecure"
+  #     - "traefik.http.routers.comfyui.tls.certresolver=myresolver"
+  #     - "traefik.http.services.comfyui.loadbalancer.server.port=8188"
+  #   healthcheck:
+  #     test: ["CMD", "curl", "-f", "http://localhost:8188/health"]
+  #     interval: 30s
+  #     timeout: 10s
+  #     retries: 3
+  #   restart: unless-stopped
+
+  watchtower:
+    image: containrrr/watchtower
+    container_name: watchtower
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    command: --interval 300 open-webui litellm
+    networks:
+      - mikoshi-network
+    restart: always
+
+  tika:
+    image: apache/tika:latest
+    container_name: tika
+    ports:
+      - "9998:9998"
+    volumes:
+      - open_webui_data:/app/backend/data
+    networks:
+      - mikoshi-network
+
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+    labels:
+      - "traefik.enable=${TRAEFIK_ENABLE:-false}"
+      - "traefik.http.routers.prometheus.rule=Host(`prometheus.${DOMAIN_NAME}`)"
+      - "traefik.http.routers.prometheus.entrypoints=websecure"
+      - "traefik.http.routers.prometheus.tls.certresolver=myresolver"
+      - "traefik.http.services.prometheus.loadbalancer.server.port=9090"
+    networks:
+      - mikoshi-network
+    restart: always
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+    labels:
+      - "traefik.enable=${TRAEFIK_ENABLE:-false}"
+      - "traefik.http.routers.grafana.rule=Host(`grafana.${DOMAIN_NAME}`)"
+      - "traefik.http.routers.grafana.entrypoints=websecure"
+      - "traefik.http.routers.grafana.tls.certresolver=myresolver"
+      - "traefik.http.services.grafana.loadbalancer.server.port=3000"
+    networks:
+      - mikoshi-network
+    depends_on:
+      - prometheus
+    restart: always
