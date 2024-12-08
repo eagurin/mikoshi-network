@@ -3,111 +3,215 @@ title: Mem0 Pipeline for Open WebUI
 author: Ваше Имя
 version: 1.0
 description: Pipeline для Open WebUI, реализующий возможности mem0 и соответствующий рекомендациям Open WebUI.
-requirements: mem0ai
+# requirements: llama-index-memory-mem0
 """
 
-from typing import List, Optional, Dict, Any
+from typing import List, Optional
 from pydantic import BaseModel
+from schemas import OpenAIChatMessage
 import os
-from mem0 import Memory
+import requests
+import json
 
-# Импорт необходимых функций из Open WebUI
+# Импортируем необходимые модули для mem0
+from llama_index.memory.mem0 import Mem0Memory
+
 from utils.pipelines.main import (
     get_last_user_message,
     add_or_update_system_message,
+    get_tools_specs,
 )
 
 class Pipeline:
     class Valves(BaseModel):
-        pipelines: List[str] = ["*"]  # Применяется ко всем пайплайнам
-        priority: int = 0  # Приоритет выполнения
+        # Список целевых pipeline IDs (моделей), к которым будет подключен этот фильтр.
+        # Если вы хотите подключить этот фильтр ко всем pipelines, установите pipelines в ["*"]
+        pipelines: List[str] = []
 
-        # Настройки mem0
-        MEM0_VECTOR_STORE: str = os.getenv("MEM0_VECTOR_STORE", "milvus")
-        MEM0_VECTOR_STORE_CONFIG: Dict[str, Any] = {
-            "collection_name": os.getenv("MEM0_COLLECTION_NAME", "mem_collection"),
-            "url": os.getenv("MEM0_MILVUS_URI", "http://milvus:19530"),
-            "embedding_model_dims": int(os.getenv("MEM0_EMBEDDING_MODEL_DIMS", "768")),
-            "metric_type": os.getenv("MEM0_METRIC_TYPE", "L2"),
-        }
-        MODEL: str = os.getenv("MEM0_MODEL", "gpt-3.5-turbo")
-        TEMPLATE: str = os.getenv(
-            "MEM0_TEMPLATE",
-            """Используй следующий контекст для помощи пользователю:\n{context}""",
-        )
-        MEMORY_LIMIT: int = int(os.getenv("MEM0_MEMORY_LIMIT", "10"))
-        TEMPERATURE: float = float(os.getenv("MEM0_TEMPERATURE", "0.7"))
-        STREAM: bool = os.getenv("MEM0_STREAM", "false").lower() == "true"
-        OPENAI_API_KEY: str = os.getenv("OPENAI_API_KEY", "")
+        # Назначьте уровень приоритета для фильтра pipeline.
+        # Уровень приоритета определяет порядок, в котором выполняются фильтры pipeline.
+        # Чем меньше число, тем выше приоритет.
+        priority: int = 0
+
+        # Параметры для вызова функций и mem0
+        OPENAI_API_BASE_URL: str
+        OPENAI_API_KEY: str
+        TASK_MODEL: str
+        TEMPLATE: str
+        MEM0_API_KEY: str
 
     def __init__(self):
-        # Указываем, что это фильтр-пайплайн для Open WebUI
+        # Фильтры pipeline совместимы только с Open WebUI
+        # Фильтр pipeline можно рассматривать как middleware, которое можно использовать для редактирования данных перед отправкой в OpenAI API.
         self.type = "filter"
-        self.name = "Mem0 Integration Pipeline"
-        self.valves = self.Valves()
 
-        # Инициализация mem0 с заданной конфигурацией
-        self.memory = Memory.from_config({
-            "vector_store": {
-                "provider": self.valves.MEM0_VECTOR_STORE,
-                "config": self.valves.MEM0_VECTOR_STORE_CONFIG
+        # Опционально вы можете установить id и имя pipeline.
+        # Идентификатор должен быть уникальным для всех pipelines.
+        # self.id = "function_calling_with_mem0"
+        self.name = "Function Calling with mem0 Integration"
+
+        # Инициализируем valves
+        self.valves = self.Valves(
+            **{
+                "pipelines": ["*"],  # Подключить ко всем pipelines
+                "OPENAI_API_BASE_URL": os.getenv(
+                    "OPENAI_API_BASE_URL", "https://api.openai.com/v1"
+                ),
+                "OPENAI_API_KEY": os.getenv("OPENAI_API_KEY", "YOUR_OPENAI_API_KEY"),
+                "TASK_MODEL": os.getenv("TASK_MODEL", "gpt-4o-mini"),
+                "TEMPLATE": """Use the following context as your learned knowledge, inside <context></context> XML tags.
+<context>
+{{CONTEXT}}
+</context>
+
+When answering the user:
+- If you don't know, just say that you don't know.
+- If you are not sure, ask for clarification.
+Avoid mentioning that you obtained the information from the context.
+Answer in the same language as the user's question.""",
+                "MEM0_API_KEY": os.getenv("MEM0_API_KEY", "YOUR_MEM0_API_KEY"),
             }
-        })
+        )
 
-        # Шаблон для системного сообщения
-        self.prompt_template = self.valves.TEMPLATE
+        # Инициализируем Mem0Memory
+        self.memory = Mem0Memory(
+            api_key=self.valves.MEM0_API_KEY,
+            collection_name=os.getenv("MEM0_COLLECTION_NAME", "mem_collection"),
+            embedding_model_dims=int(os.getenv("MEM0_EMBEDDING_MODEL_DIMS", "768")),
+            vector_store=os.getenv("MEM0_VECTOR_STORE", "milvus"),
+            vector_store_kwargs={
+                "milvus_uri": os.getenv("MEM0_MILVUS_URI", "http://localhost:19530"),
+                "metric_type": os.getenv("MEM0_METRIC_TYPE", "L2"),
+            },
+        )
 
     async def on_startup(self):
-        print(f"Пайплайн '{self.name}' был запущен.")
+        # Эта функция вызывается при запуске сервера.
+        print(f"on_startup:{__name__}")
+        pass
 
     async def on_shutdown(self):
-        print(f"Пайплайн '{self.name}' был остановлен.")
+        # Эта функция вызывается при остановке сервера.
+        print(f"on_shutdown:{__name__}")
+        pass
 
     async def inlet(self, body: dict, user: Optional[dict] = None) -> dict:
-        # Пропускаем обработку, если запрошена генерация заголовка
+        # Если запрошена генерация заголовка, пропустить фильтр вызова функций
         if body.get("title", False):
             return body
-        print(f"Обработка сообщения через пайплайн '{self.name}'.")
-        # Извлекаем последние N сообщений на основе лимита памяти
-        past_messages = body["messages"][-self.valves.MEMORY_LIMIT :]
-        # Получаем последнее сообщение пользователя
-        user_message = get_last_user_message(past_messages)
-        if not user_message:
-            return body
-        user_message_content = user_message["content"]
-        # Сохраняем сообщение пользователя в локальное хранилище mem0
-        self.memory.add(user_message_content, user_id="user")
-        # Ищем связанные воспоминания
-        related_memories = self.memory.search(user_message_content, user_id="user")
-        # Формируем контекст из полученных воспоминаний
-        context = "\n".join([memory['text'] for memory in related_memories])
-        # Строим промпт
-        prompt = self.prompt_template.format(context=context)
-        # Генерируем ответ с использованием модели
-        agent_response = await self.generate_response(prompt)
-        if not agent_response:
-            return body
-        # Добавляем или обновляем системное сообщение с ответом агента
-        messages = add_or_update_system_message(agent_response, body["messages"])
-        return {**body, "messages": messages}
 
-    async def generate_response(self, prompt: str) -> Optional[str]:
+        print(f"pipe:{__name__}")
+        print(user)
+
+        # Получаем последнее сообщение пользователя
+        user_message = get_last_user_message(body["messages"])
+
+        # Получаем контекст из памяти mem0
+        memory_context = ""
         try:
-            # Используем OpenAI API для генерации ответа
-            openai.api_key = self.valves.OPENAI_API_KEY
-            response = openai.ChatCompletion.create(
-                model=self.valves.MODEL,
-                messages=[{"role": "system", "content": prompt}],
-                temperature=self.valves.TEMPERATURE,
-                stream=self.valves.STREAM,
-            )
-            if self.valves.STREAM:
-                content = ""
-                for chunk in response:
-                    content += chunk.choices[0].delta.get('content', '')
-                return content.strip()
-            else:
-                return response.choices[0].message.content.strip()
+            mem_results = self.memory.query(user_message, top_k=5)
+            if mem_results:
+                memory_context = "\n".join([res["content"] for res in mem_results])
         except Exception as e:
-            print(f"Ошибка при генерации ответа: {e}")
-            return None
+            print(f"Memory retrieval error: {e}")
+
+        # Обновляем TEMPLATE с контекстом из памяти
+        system_prompt = self.valves.TEMPLATE.replace("{{CONTEXT}}", memory_context)
+
+        # Обновляем сообщения
+        messages = add_or_update_system_message(
+            system_prompt, body["messages"]
+        )
+
+        # Получаем спецификации инструментов
+        tools_specs = get_tools_specs(self.tools)
+
+        # Системный prompt для вызова функций
+        fc_system_prompt = (
+            f"Tools: {json.dumps(tools_specs, indent=2)}"
+            + """
+If a function tool doesn't match the query, return an empty string. Else, pick a function tool, fill in the parameters from the function tool's schema, and return it in the format { "name": \"functionName\", "parameters": { "key": "value" } }. Only pick a function if the user asks. Only return the object. Do not return any other text."
+"""
+        )
+
+        r = None
+        try:
+            # Вызываем OpenAI API для получения ответа функции
+            r = requests.post(
+                url=f"{self.valves.OPENAI_API_BASE_URL}/chat/completions",
+                json={
+                    "model": self.valves.TASK_MODEL,
+                    "messages": [
+                        {
+                            "role": "system",
+                            "content": fc_system_prompt,
+                        },
+                        {
+                            "role": "user",
+                            "content": "History:\n"
+                            + "\n".join(
+                                [
+                                    f"{message['role']}: {message['content']}"
+                                    for message in body["messages"][::-1][:4]
+                                ]
+                            )
+                            + f"\nQuery: {user_message}",
+                        },
+                    ],
+                },
+                headers={
+                    "Authorization": f"Bearer {self.valves.OPENAI_API_KEY}",
+                    "Content-Type": "application/json",
+                },
+                stream=False,
+            )
+            r.raise_for_status()
+
+            response = r.json()
+            content = response["choices"][0]["message"]["content"]
+
+            # Разбираем ответ функции
+            if content != "":
+                result = json.loads(content)
+                print(result)
+
+                # Вызываем функцию
+                if "name" in result:
+                    function = getattr(self.tools, result["name"])
+                    function_result = None
+                    try:
+                        function_result = function(**result["parameters"])
+                    except Exception as e:
+                        print(e)
+
+                    # Добавляем результат функции в память
+                    if function_result:
+                        # Добавляем в память mem0
+                        self.memory.add(
+                            content=function_result,
+                            metadata={"user_id": user.get("id", "default_user")},
+                        )
+
+                        # Обновляем системный prompt с новым контекстом
+                        system_prompt = self.valves.TEMPLATE.replace(
+                            "{{CONTEXT}}", function_result
+                        )
+
+                        print(system_prompt)
+                        messages = add_or_update_system_message(
+                            system_prompt, messages
+                        )
+
+                        # Возвращаем обновленные сообщения
+                        return {**body, "messages": messages}
+
+        except Exception as e:
+            print(f"Error: {e}")
+
+            if r:
+                try:
+                    print(r.json())
+                except:
+                    pass
+
+        return body
