@@ -1,3 +1,12 @@
+"""
+title: Memory Module Pipeline
+author: Evgeny A.
+author_url: https://github.com/open-webui
+funding_url: https://github.com/open-webui
+version: 0.0.0.001a
+requirements: mem0ai
+"""
+
 from typing import List, Optional, Dict, Any
 from pydantic import BaseModel
 import os
