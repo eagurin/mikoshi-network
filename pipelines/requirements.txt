@@ -25,3 +25,4 @@ statsmodels
 scikit-learn
 
 supabase
+llama-index-memory-mem0
